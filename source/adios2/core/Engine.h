@@ -386,6 +386,16 @@ public:
     AllStepsBlocksInfo(const Variable<T> &variable) const;
 
     /**
+     * This function is internal, for public interface use
+     * Variable<T>::AllStepsBlocksInfo
+     * @param variable
+     * @return
+     */
+    template <class T>
+    std::vector<std::vector<typename Variable<T>::Info>>
+    AllRelativeStepsBlocksInfo(const Variable<T> &variable) const;
+
+    /**
      * Extracts all available blocks information for a particular
      * variable and step.
      * Valid in read mode only.
@@ -427,7 +437,7 @@ protected:
 #define declare_type(T)                                                        \
     virtual void DoPutSync(Variable<T> &, const T *);                          \
     virtual void DoPutDeferred(Variable<T> &, const T *);
-    ADIOS2_FOREACH_TYPE_1ARG(declare_type)
+    ADIOS2_FOREACH_STDTYPE_1ARG(declare_type)
 #undef declare_type
 
 // Get
@@ -435,7 +445,7 @@ protected:
     virtual void DoGetSync(Variable<T> &, T *);                                \
     virtual void DoGetDeferred(Variable<T> &, T *);                            \
     virtual typename Variable<T>::Info *DoGetBlockSync(Variable<T> &);
-    ADIOS2_FOREACH_TYPE_1ARG(declare_type)
+    ADIOS2_FOREACH_STDTYPE_1ARG(declare_type)
 #undef declare_type
 
     virtual void DoClose(const int transportIndex) = 0;
@@ -455,10 +465,13 @@ protected:
     virtual std::map<size_t, std::vector<typename Variable<T>::Info>>          \
     DoAllStepsBlocksInfo(const Variable<T> &variable) const;                   \
                                                                                \
+    virtual std::vector<std::vector<typename Variable<T>::Info>>               \
+    DoAllRelativeStepsBlocksInfo(const Variable<T> &variable) const;           \
+                                                                               \
     virtual std::vector<typename Variable<T>::Info> DoBlocksInfo(              \
         const Variable<T> &variable, const size_t step) const;
 
-    ADIOS2_FOREACH_TYPE_1ARG(declare_type)
+    ADIOS2_FOREACH_STDTYPE_1ARG(declare_type)
 #undef declare_type
 
 private:
@@ -518,12 +531,15 @@ private:
         const std::string &variableName, const std::string hint);              \
                                                                                \
     extern template std::map<size_t, std::vector<typename Variable<T>::Info>>  \
-    Engine::AllStepsBlocksInfo(const Variable<T> &variable) const;             \
+    Engine::AllStepsBlocksInfo(const Variable<T> &) const;                     \
+                                                                               \
+    extern template std::vector<std::vector<typename Variable<T>::Info>>       \
+    Engine::AllRelativeStepsBlocksInfo(const Variable<T> &) const;             \
                                                                                \
     extern template std::vector<typename Variable<T>::Info>                    \
-    Engine::BlocksInfo(const Variable<T> &variable, const size_t step) const;
+    Engine::BlocksInfo(const Variable<T> &, const size_t) const;
 
-ADIOS2_FOREACH_TYPE_1ARG(declare_template_instantiation)
+ADIOS2_FOREACH_STDTYPE_1ARG(declare_template_instantiation)
 #undef declare_template_instantiation
 
 } // end namespace core

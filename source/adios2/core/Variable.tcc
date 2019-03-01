@@ -126,7 +126,6 @@ std::pair<T, T> Variable<T>::DoMinMax(const size_t step) const
             if (helper::LessThan<T>(minValue, minMax.first))
             {
                 minMax.first = minValue;
-                continue;
             }
 
             const T maxValue = isValue ? blockInfo.Value : blockInfo.Max;
@@ -143,6 +142,33 @@ std::pair<T, T> Variable<T>::DoMinMax(const size_t step) const
         minMax.second = m_Max;
     }
     return minMax;
+}
+
+template <class T>
+std::vector<std::vector<typename Variable<T>::Info>>
+Variable<T>::DoAllStepsBlocksInfo() const
+{
+    if (m_DebugMode && m_Engine == nullptr)
+    {
+        if (m_Engine == nullptr)
+        {
+            throw std::invalid_argument(
+                "ERROR: from variable " + m_Name +
+                " function is only valid in read mode, in "
+                "call to Variable<T>::AllBlocksInfo\n");
+        }
+
+        if (!m_FirstStreamingStep)
+        {
+            throw std::invalid_argument("ERROR: from variable " + m_Name +
+                                        " function is not valid in "
+                                        "random-access read mode "
+                                        "(BeginStep/EndStep), in "
+                                        "call to Variable<T>::AllBlocksInfo\n");
+        }
+    }
+
+    return m_Engine->AllRelativeStepsBlocksInfo(*this);
 }
 
 } // end namespace core

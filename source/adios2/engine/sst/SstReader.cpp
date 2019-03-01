@@ -68,7 +68,7 @@ SstReader::SstReader(IO &io, const std::string &name, const Mode mode,
         return (void *)variable;                                               \
     }
 
-        ADIOS2_FOREACH_TYPE_1ARG(declare_type)
+        ADIOS2_FOREACH_STDTYPE_1ARG(declare_type)
 #undef declare_type
 
         return (void *)NULL;
@@ -99,11 +99,10 @@ SstReader::SstReader(IO &io, const std::string &name, const Mode mode,
 #define declare_type(T)                                                        \
     else if (Type == helper::GetType<T>())                                     \
     {                                                                          \
-        std::cout << "Loading attribute matched type " << Type << std::endl;   \
         Reader->m_IO.DefineAttribute<T>(attrName, *(T *)data);                 \
     }
 
-            ADIOS2_FOREACH_ATTRIBUTE_PRIMITIVE_TYPE_1ARG(declare_type)
+            ADIOS2_FOREACH_ATTRIBUTE_PRIMITIVE_STDTYPE_1ARG(declare_type)
 #undef declare_type
             else
             {
@@ -150,7 +149,7 @@ SstReader::SstReader(IO &io, const std::string &name, const Mode mode,
         variable->m_AvailableStepsCount = 1;                                   \
         return (void *)variable;                                               \
     }
-        ADIOS2_FOREACH_TYPE_1ARG(declare_type)
+        ADIOS2_FOREACH_STDTYPE_1ARG(declare_type)
 #undef declare_type
         return (void *)NULL;
     };
@@ -379,7 +378,7 @@ void SstReader::Init()
             }                                                                  \
         }                                                                      \
     }
-ADIOS2_FOREACH_TYPE_1ARG(declare_gets)
+ADIOS2_FOREACH_STDTYPE_1ARG(declare_gets)
 #undef declare_gets
 
 void SstReader::PerformGets()
@@ -414,7 +413,7 @@ void SstReader::PerformGets()
         ReadVariableBlocks(variable);                                          \
         variable.m_BlocksInfo.clear();                                         \
     }
-            ADIOS2_FOREACH_TYPE_1ARG(declare_type)
+            ADIOS2_FOREACH_STDTYPE_1ARG(declare_type)
 #undef declare_type
         }
 
@@ -461,7 +460,7 @@ void SstReader::DoClose(const int transportIndex) { SstReaderClose(m_Input); }
             "ERROR: Unknown marshal mechanism in DoBlocksInfo\n");             \
     }
 
-ADIOS2_FOREACH_TYPE_1ARG(declare_type)
+ADIOS2_FOREACH_STDTYPE_1ARG(declare_type)
 #undef declare_type
 
 } // end namespace engine

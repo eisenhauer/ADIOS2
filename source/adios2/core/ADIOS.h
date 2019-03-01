@@ -156,7 +156,7 @@ public:
                                  const Dims &)> &function,                     \
         const Params &parameters);
 
-    ADIOS2_FOREACH_TYPE_1ARG(declare_type)
+    ADIOS2_FOREACH_STDTYPE_1ARG(declare_type)
 #undef declare_type
 
     /** define CallBack2 */
@@ -167,6 +167,21 @@ public:
                                  const size_t, const Dims &, const Dims &,
                                  const Dims &)> &function,
         const Params &parameters);
+
+    /**
+     * DANGER ZONE: removes a particular IO. This will effectively eliminate any
+     * parameter from the config.xml file
+     * @param name io input name
+     * @return true: IO was found and removed, false: IO not found and not
+     * removed
+     */
+    bool RemoveIO(const std::string name);
+
+    /**
+     * DANGER ZONE: removes all IOs created with DeclareIO. This will
+     * effectively eliminate any parameter from the config.xml file
+     */
+    void RemoveAllIOs() noexcept;
 
 private:
     /** XML File to be read containing configuration information */

@@ -457,7 +457,7 @@ void HDF5Common::CreateVar(core::IO &io, hid_t datasetId,
     }
     else if (H5Tequal(H5T_NATIVE_CHAR, h5Type))
     {
-        AddVar<char>(io, name, datasetId, ts);
+        AddVar<TypeInfo<char>::IOType>(io, name, datasetId, ts);
     }
     else if (H5Tequal(H5T_NATIVE_UCHAR, h5Type))
     {
@@ -491,19 +491,19 @@ void HDF5Common::CreateVar(core::IO &io, hid_t datasetId,
     }
     else if (H5Tequal(H5T_NATIVE_LONG, h5Type))
     {
-        AddVar<long>(io, name, datasetId, ts);
+        AddVar<TypeInfo<long>::IOType>(io, name, datasetId, ts);
     }
     else if (H5Tequal(H5T_NATIVE_ULONG, h5Type))
     {
-        AddVar<unsigned long>(io, name, datasetId, ts);
+        AddVar<TypeInfo<unsigned long>::IOType>(io, name, datasetId, ts);
     }
     else if (H5Tequal(H5T_NATIVE_LLONG, h5Type))
     {
-        AddVar<long long>(io, name, datasetId, ts);
+        AddVar<TypeInfo<long long>::IOType>(io, name, datasetId, ts);
     }
     else if (H5Tequal(H5T_NATIVE_ULLONG, h5Type))
     {
-        AddVar<unsigned long long>(io, name, datasetId, ts);
+        AddVar<TypeInfo<unsigned long long>::IOType>(io, name, datasetId, ts);
     }
     else if (H5Tequal(H5T_NATIVE_FLOAT, h5Type))
     {
@@ -893,17 +893,18 @@ void HDF5Common::AddNonStringAttribute(core::IO &io,
                                        hid_t attrId, hid_t h5Type,
                                        hsize_t arraySize)
 {
+    using IOType = typename TypeInfo<T>::IOType;
     if (arraySize == 0)
     { // SCALAR
-        T val;
+        IOType val;
         H5Aread(attrId, h5Type, &val);
-        io.DefineAttribute<T>(attrName, val);
+        io.DefineAttribute(attrName, val);
     }
     else
     {
-        T val[arraySize];
+        IOType val[arraySize];
         H5Aread(attrId, h5Type, val);
-        io.DefineAttribute<T>(attrName, val, arraySize);
+        io.DefineAttribute(attrName, val, arraySize);
     }
 }
 
@@ -1021,7 +1022,7 @@ void HDF5Common::WriteStringAttr(core::IO &io,
         H5Tclose(h5Type);
         H5Aclose(attr);
     }
-    else if (adiosAttr->m_Elements > 1)
+    else if (adiosAttr->m_Elements >= 1)
     {
         // is array
         int max = 0;
@@ -1128,19 +1129,19 @@ void HDF5Common::LocateAttrParent(const std::string &attrName,
                 ts += delimiter;
                 ts += list[j].c_str();
             }
-            if (H5Lexists(m_FileId, ts.c_str(), H5P_DEFAULT) == 0)
+            if (H5Lexists(m_FileId, ts.c_str(), H5P_DEFAULT) <= 0)
                 continue;
             else
             {
                 topId = H5Dopen(m_FileId, ts.c_str(), H5P_DEFAULT);
                 break;
             }
-        }
+        } // for
 
         if (topId != m_FileId)
             parentChain.push_back(topId);
         return;
-    }
+    } // if
 
     // hid_t dsetID = H5Dopen(topId, list.back().c_str(), H5P_DEFAULT);
 
@@ -1174,7 +1175,7 @@ void HDF5Common::WriteAttrFromIO(core::IO &io)
         std::string attrType = temp["Type"];
 
         hid_t parentID = m_FileId;
-#ifndef NO_ATTR_VAR_ASSOC
+#ifdef NO_ATTR_VAR_ASSOC
         std::vector<hid_t> chain;
         std::vector<std::string> list;
         LocateAttrParent(attrName, list, chain);
@@ -1184,6 +1185,11 @@ void HDF5Common::WriteAttrFromIO(core::IO &io)
         {
             parentID = chain.back();
         }
+#else
+        // will list out all attr at root level
+        // to make it easy to be consistant with ADIOS2 attr symantic
+        std::vector<std::string> list;
+        list.push_back(attrName);
 #endif
         // if (H5Aexists(parentID, attrName.c_str()) > 0)
         if (H5Aexists(parentID, list.back().c_str()) > 0)
@@ -1211,7 +1217,7 @@ void HDF5Common::WriteAttrFromIO(core::IO &io)
         core::Attribute<T> *adiosAttr = io.InquireAttribute<T>(attrName);      \
         WriteNonStringAttr(io, adiosAttr, parentID, list.back().c_str());      \
     }
-        ADIOS2_FOREACH_ATTRIBUTE_TYPE_1ARG(declare_template_instantiation)
+        ADIOS2_FOREACH_ATTRIBUTE_STDTYPE_1ARG(declare_template_instantiation)
 #undef declare_template_instantiation
     }
 
@@ -1342,7 +1348,7 @@ void HDF5Common::StaticGetAdiosStepString(std::string &stepName, int ts)
 #define declare_template_instantiation(T)                                      \
     template void HDF5Common::Write(core::Variable<T> &, const T *);
 
-ADIOS2_FOREACH_TYPE_1ARG(declare_template_instantiation)
+ADIOS2_FOREACH_STDTYPE_1ARG(declare_template_instantiation)
 #undef declare_template_instantiation
 
 } // end namespace interop

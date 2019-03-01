@@ -90,7 +90,7 @@ void Engine::InitTransports() {}
     {                                                                          \
         ThrowUp("DoPutDeferred");                                              \
     }
-ADIOS2_FOREACH_TYPE_1ARG(declare_type)
+ADIOS2_FOREACH_STDTYPE_1ARG(declare_type)
 #undef declare_type
 
 // DoGet*
@@ -105,7 +105,7 @@ ADIOS2_FOREACH_TYPE_1ARG(declare_type)
         return nullptr;                                                        \
     }
 
-ADIOS2_FOREACH_TYPE_1ARG(declare_type)
+ADIOS2_FOREACH_STDTYPE_1ARG(declare_type)
 #undef declare_type
 
 #define declare_type(T)                                                        \
@@ -116,6 +116,13 @@ ADIOS2_FOREACH_TYPE_1ARG(declare_type)
         return std::map<size_t, std::vector<typename Variable<T>::Info>>();    \
     }                                                                          \
                                                                                \
+    std::vector<std::vector<typename Variable<T>::Info>>                       \
+    Engine::DoAllRelativeStepsBlocksInfo(const Variable<T> &variable) const    \
+    {                                                                          \
+        ThrowUp("DoAllRelativeStepsBlocksInfo");                               \
+        return std::vector<std::vector<typename Variable<T>::Info>>();         \
+    }                                                                          \
+                                                                               \
     std::vector<typename Variable<T>::Info> Engine::DoBlocksInfo(              \
         const Variable<T> &variable, const size_t step) const                  \
     {                                                                          \
@@ -123,7 +130,7 @@ ADIOS2_FOREACH_TYPE_1ARG(declare_type)
         return std::vector<typename Variable<T>::Info>();                      \
     }
 
-ADIOS2_FOREACH_TYPE_1ARG(declare_type)
+ADIOS2_FOREACH_STDTYPE_1ARG(declare_type)
 #undef declare_type
 
 // PRIVATE
@@ -172,12 +179,15 @@ void Engine::CheckOpenModes(const std::set<Mode> &modes,
         const std::string &variableName, const std::string hint);              \
                                                                                \
     template std::map<size_t, std::vector<typename Variable<T>::Info>>         \
-    Engine::AllStepsBlocksInfo(const Variable<T> &variable) const;             \
+    Engine::AllStepsBlocksInfo(const Variable<T> &) const;                     \
+                                                                               \
+    template std::vector<std::vector<typename Variable<T>::Info>>              \
+    Engine::AllRelativeStepsBlocksInfo(const Variable<T> &) const;             \
                                                                                \
     template std::vector<typename Variable<T>::Info> Engine::BlocksInfo(       \
-        const Variable<T> &variable, const size_t step) const;
+        const Variable<T> &, const size_t) const;
 
-ADIOS2_FOREACH_TYPE_1ARG(declare_template_instantiation)
+ADIOS2_FOREACH_STDTYPE_1ARG(declare_template_instantiation)
 #undef declare_template_instantiation
 
 } // end namespace core

@@ -50,8 +50,6 @@ static int verbose = 0;
 
 mxClassID adiostypeToMatlabClass(int adiostype, mxComplexity *complexity);
 size_t adiostypeToMemSize(adios2_type adiostype);
-mxClassID adiostypestringToMatlabClass(const char *type,
-                                       mxComplexity *complexity);
 mxArray *valueToMatlabValue(const void *data, mxClassID mxtype,
                             mxComplexity complexFlag);
 mxArray *arrayToMatlabArray(const void *data, const size_t nelems, mxClassID mxtype,
@@ -544,11 +542,8 @@ mxClassID adiostypeToMatlabClass(adios2_type adiostype,
     *complexity = mxREAL;
     switch (adiostype)
     {
-    case adios2_type_unsigned_char:
     case adios2_type_uint8_t:
         return mxUINT8_CLASS;
-    case adios2_type_char:
-    case adios2_type_signed_char:
     case adios2_type_int8_t:
         return mxINT8_CLASS;
 
@@ -556,35 +551,18 @@ mxClassID adiostypeToMatlabClass(adios2_type adiostype,
     /* case adios2_type_string_array: */
         return mxCHAR_CLASS;
 
-    case adios2_type_unsigned_short:
     case adios2_type_uint16_t:
         return mxUINT16_CLASS;
-    case adios2_type_short:
     case adios2_type_int16_t:
         return mxINT16_CLASS;
 
-    case adios2_type_unsigned_int:
     case adios2_type_uint32_t:
         return mxUINT32_CLASS;
-    case adios2_type_int:
     case adios2_type_int32_t:
         return mxINT32_CLASS;
 
-    case adios2_type_unsigned_long_int:
-        if (sizeof(long int) == 4)
-            return mxUINT32_CLASS;
-        else
-            return mxUINT64_CLASS;
-    case adios2_type_long_int:
-        if (sizeof(long int) == 4)
-            return mxINT32_CLASS;
-        else
-            return mxINT64_CLASS;
-
-    case adios2_type_unsigned_long_long_int:
     case adios2_type_uint64_t:
         return mxUINT64_CLASS;
-    case adios2_type_long_long_int:
     case adios2_type_int64_t:
         return mxINT64_CLASS;
 
@@ -614,10 +592,7 @@ size_t adiostypeToMemSize(adios2_type adiostype)
 {
     switch (adiostype)
     {
-    case adios2_type_unsigned_char:
     case adios2_type_uint8_t:
-    case adios2_type_char:
-    case adios2_type_signed_char:
     case adios2_type_int8_t:
         return sizeof(char);
 
@@ -625,28 +600,15 @@ size_t adiostypeToMemSize(adios2_type adiostype)
     /* case adios2_type_string_array: */
         return sizeof(char);
 
-    case adios2_type_unsigned_short:
     case adios2_type_uint16_t:
-    case adios2_type_short:
     case adios2_type_int16_t:
         return sizeof(int16_t);
 
-    case adios2_type_unsigned_int:
     case adios2_type_uint32_t:
-    case adios2_type_int:
     case adios2_type_int32_t:
         return sizeof(int32_t);
 
-    case adios2_type_unsigned_long_int:
-    case adios2_type_long_int:
-        if (sizeof(long int) == 4)
-            return sizeof(int32_t);
-        else
-            return sizeof(int64_t);
-
-    case adios2_type_unsigned_long_long_int:
     case adios2_type_uint64_t:
-    case adios2_type_long_long_int:
     case adios2_type_int64_t:
         return sizeof(int64_t);
 
@@ -666,63 +628,6 @@ size_t adiostypeToMemSize(adios2_type adiostype)
                           adiostype);
         break;
     }
-    return 0; /* just to avoid warnings. never executed */
-}
-
-/** return the appropriate class for an adios type (and complexity too) */
-mxClassID adiostypestringToMatlabClass(const char *type,
-                                       mxComplexity *complexity)
-{
-    *complexity = mxREAL;
-    if (!strcmp(type, "char"))
-        return mxINT8_CLASS;
-    else if (!strcmp(type, "unsigned char"))
-        return mxUINT8_CLASS;
-    else if (!strcmp(type, "short"))
-        return mxINT16_CLASS;
-    else if (!strcmp(type, "unsigned short"))
-        return mxUINT16_CLASS;
-    else if (!strcmp(type, "int"))
-        return mxINT32_CLASS;
-    else if (!strcmp(type, "unsigned int"))
-        return mxUINT32_CLASS;
-    else if (!strcmp(type, "long int"))
-    {
-        if (sizeof(long int) == 4)
-            return mxINT32_CLASS;
-        else
-            return mxINT64_CLASS;
-    }
-    else if (!strcmp(type, "unsigned long int"))
-    {
-        if (sizeof(long int) == 4)
-            return mxUINT32_CLASS;
-        else
-            return mxUINT64_CLASS;
-    }
-    else if (!strcmp(type, "long long int"))
-        return mxINT64_CLASS;
-    else if (!strcmp(type, "unsigned long long int"))
-        return mxUINT64_CLASS;
-    else if (!strcmp(type, "float"))
-        return mxSINGLE_CLASS;
-    else if (!strcmp(type, "double"))
-        return mxDOUBLE_CLASS;
-    else if (!strcmp(type, "float complex"))
-    {
-        *complexity = mxCOMPLEX;
-        return mxSINGLE_CLASS;
-    }
-    else if (!strcmp(type, "double complex"))
-    {
-        *complexity = mxCOMPLEX;
-        return mxDOUBLE_CLASS;
-    }
-    else if (!strcmp(type, "string"))
-        return mxCHAR_CLASS;
-    else if (!strcmp(type, "string array"))
-        return mxCHAR_CLASS;
-
     return 0; /* just to avoid warnings. never executed */
 }
 

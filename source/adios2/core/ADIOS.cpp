@@ -254,7 +254,7 @@ Operator *ADIOS::InquireOperator(const std::string name) noexcept
         return *itPair.first->second;                                          \
     }
 
-ADIOS2_FOREACH_TYPE_1ARG(declare_type)
+ADIOS2_FOREACH_STDTYPE_1ARG(declare_type)
 #undef declare_type
 
 Operator &ADIOS::DefineCallBack(
@@ -272,6 +272,18 @@ Operator &ADIOS::DefineCallBack(
     auto itPair = m_Operators.emplace(name, std::move(callbackOperator));
     return *itPair.first->second;
 }
+
+bool ADIOS::RemoveIO(const std::string name)
+{
+    if (m_IOs.erase(name) == 1)
+    {
+        return true;
+    }
+
+    return false;
+}
+
+void ADIOS::RemoveAllIOs() noexcept { m_IOs.clear(); }
 
 // PRIVATE FUNCTIONS
 void ADIOS::CheckMPI() const

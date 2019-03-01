@@ -156,8 +156,10 @@ bool DataManSerializer::IsCompressionAvailable(const std::string &method,
 {
     if (method == "zfp")
     {
-        if (type == "int" || type == "long" || type == "int32_t" ||
-            type == "int64_t" || type == "float" || type == "double")
+        if (type == helper::GetType<int32_t>() ||
+            type == helper::GetType<int64_t>() ||
+            type == helper::GetType<float>() ||
+            type == helper::GetType<double>())
         {
             if (count.size() <= 3)
             {
@@ -167,7 +169,8 @@ bool DataManSerializer::IsCompressionAvailable(const std::string &method,
     }
     else if (method == "sz")
     {
-        if (type == "float" || type == "double")
+        if (type == helper::GetType<float>() ||
+            type == helper::GetType<double>())
         {
             if (count.size() <= 5)
             {
@@ -177,8 +180,10 @@ bool DataManSerializer::IsCompressionAvailable(const std::string &method,
     }
     else if (method == "bzip2")
     {
-        if (type == "int" || type == "long" || type == "int32_t" ||
-            type == "int64_t" || type == "float" || type == "double")
+        if (type == helper::GetType<int32_t>() ||
+            type == helper::GetType<int64_t>() ||
+            type == helper::GetType<float>() ||
+            type == helper::GetType<double>())
         {
             return true;
         }
@@ -204,7 +209,7 @@ void DataManSerializer::PutAttributes(core::IO &io, const int rank)
         core::Attribute<T> &attribute = *io.InquireAttribute<T>(name);         \
         PutAttribute(attribute, rank);                                         \
     }
-            ADIOS2_FOREACH_ATTRIBUTE_TYPE_1ARG(declare_type)
+            ADIOS2_FOREACH_ATTRIBUTE_STDTYPE_1ARG(declare_type)
 #undef declare_type
         }
     }
@@ -446,7 +451,7 @@ void DataManSerializer::GetAttributes(core::IO &io)
             }                                                                  \
         }                                                                      \
     }
-        ADIOS2_FOREACH_ATTRIBUTE_TYPE_1ARG(declare_type)
+        ADIOS2_FOREACH_ATTRIBUTE_STDTYPE_1ARG(declare_type)
 #undef declare_type
     }
 }
@@ -614,7 +619,7 @@ DataManSerializer::GenerateReply(const std::vector<char> &request, size_t &step)
                ovlpStart, ovlpCount, ovlpStart, ovlpCount, var.doid, step,     \
                var.rank, var.address, Params(), replyLocalBuffer, replyMetaJ); \
     }
-                    ADIOS2_FOREACH_TYPE_1ARG(declare_type)
+                    ADIOS2_FOREACH_STDTYPE_1ARG(declare_type)
 #undef declare_type
 
                     std::vector<char> metapack = SerializeJson(*replyMetaJ);

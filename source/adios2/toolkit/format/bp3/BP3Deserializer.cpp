@@ -182,20 +182,19 @@ void BP3Deserializer::ParseVariablesIndex(const BufferSTL &bufferSTL,
 
         case (type_byte):
         {
-            DefineVariableInEngineIO<signed char>(header, engine, buffer,
-                                                  position);
+            DefineVariableInEngineIO<int8_t>(header, engine, buffer, position);
             break;
         }
 
         case (type_short):
         {
-            DefineVariableInEngineIO<short>(header, engine, buffer, position);
+            DefineVariableInEngineIO<int16_t>(header, engine, buffer, position);
             break;
         }
 
         case (type_integer):
         {
-            DefineVariableInEngineIO<int>(header, engine, buffer, position);
+            DefineVariableInEngineIO<int32_t>(header, engine, buffer, position);
             break;
         }
 
@@ -207,22 +206,21 @@ void BP3Deserializer::ParseVariablesIndex(const BufferSTL &bufferSTL,
 
         case (type_unsigned_byte):
         {
-            DefineVariableInEngineIO<unsigned char>(header, engine, buffer,
-                                                    position);
+            DefineVariableInEngineIO<uint8_t>(header, engine, buffer, position);
             break;
         }
 
         case (type_unsigned_short):
         {
-            DefineVariableInEngineIO<unsigned short>(header, engine, buffer,
-                                                     position);
+            DefineVariableInEngineIO<uint16_t>(header, engine, buffer,
+                                               position);
             break;
         }
 
         case (type_unsigned_integer):
         {
-            DefineVariableInEngineIO<unsigned int>(header, engine, buffer,
-                                                   position);
+            DefineVariableInEngineIO<uint32_t>(header, engine, buffer,
+                                               position);
             break;
         }
 
@@ -366,20 +364,21 @@ void BP3Deserializer::ParseAttributesIndex(const BufferSTL &bufferSTL,
 
         case (type_byte):
         {
-            DefineAttributeInEngineIO<signed char>(header, engine, buffer,
-                                                   position);
+            DefineAttributeInEngineIO<int8_t>(header, engine, buffer, position);
             break;
         }
 
         case (type_short):
         {
-            DefineAttributeInEngineIO<short>(header, engine, buffer, position);
+            DefineAttributeInEngineIO<int16_t>(header, engine, buffer,
+                                               position);
             break;
         }
 
         case (type_integer):
         {
-            DefineAttributeInEngineIO<int>(header, engine, buffer, position);
+            DefineAttributeInEngineIO<int32_t>(header, engine, buffer,
+                                               position);
             break;
         }
 
@@ -392,22 +391,22 @@ void BP3Deserializer::ParseAttributesIndex(const BufferSTL &bufferSTL,
 
         case (type_unsigned_byte):
         {
-            DefineAttributeInEngineIO<unsigned char>(header, engine, buffer,
-                                                     position);
+            DefineAttributeInEngineIO<uint8_t>(header, engine, buffer,
+                                               position);
             break;
         }
 
         case (type_unsigned_short):
         {
-            DefineAttributeInEngineIO<unsigned short>(header, engine, buffer,
-                                                      position);
+            DefineAttributeInEngineIO<uint16_t>(header, engine, buffer,
+                                                position);
             break;
         }
 
         case (type_unsigned_integer):
         {
-            DefineAttributeInEngineIO<unsigned int>(header, engine, buffer,
-                                                    position);
+            DefineAttributeInEngineIO<uint32_t>(header, engine, buffer,
+                                                position);
             break;
         }
 
@@ -485,7 +484,7 @@ BP3Deserializer::PerformGetsVariablesSubFileInfo(core::IO &io)
         subFileInfoPair.second =                                               \
             GetSubFileInfo(*io.InquireVariable<T>(variableName));              \
     }
-        ADIOS2_FOREACH_TYPE_1ARG(declare_type)
+        ADIOS2_FOREACH_STDTYPE_1ARG(declare_type)
 #undef declare_type
     }
     return m_DeferredVariablesMap;
@@ -513,7 +512,7 @@ void BP3Deserializer::ClipMemory(const std::string &variableName, core::IO &io,
                                          m_IsRowMajor, m_ReverseDimensions);   \
         }                                                                      \
     }
-    ADIOS2_FOREACH_TYPE_1ARG(declare_type)
+    ADIOS2_FOREACH_STDTYPE_1ARG(declare_type)
 #undef declare_type
 }
 
@@ -534,7 +533,7 @@ void BP3Deserializer::ClipMemory(const std::string &variableName, core::IO &io,
     template void BP3Deserializer::GetValueFromMetadata(                       \
         core::Variable<T> &variable, T *) const;
 
-ADIOS2_FOREACH_TYPE_1ARG(declare_template_instantiation)
+ADIOS2_FOREACH_STDTYPE_1ARG(declare_template_instantiation)
 #undef declare_template_instantiation
 
 #define declare_template_instantiation(T)                                      \
@@ -552,6 +551,10 @@ ADIOS2_FOREACH_TYPE_1ARG(declare_template_instantiation)
     template std::map<size_t, std::vector<typename core::Variable<T>::Info>>   \
     BP3Deserializer::AllStepsBlocksInfo(const core::Variable<T> &) const;      \
                                                                                \
+    template std::vector<std::vector<typename core::Variable<T>::Info>>        \
+    BP3Deserializer::AllRelativeStepsBlocksInfo(const core::Variable<T> &)     \
+        const;                                                                 \
+                                                                               \
     template std::vector<typename core::Variable<T>::Info>                     \
     BP3Deserializer::BlocksInfo(const core::Variable<T> &, const size_t)       \
         const;                                                                 \
@@ -565,7 +568,7 @@ ADIOS2_FOREACH_TYPE_1ARG(declare_template_instantiation)
         core::Variable<T> &, typename core::Variable<T>::Info &,               \
         const helper::SubStreamBoxInfo &, const bool, const size_t);
 
-ADIOS2_FOREACH_TYPE_1ARG(declare_template_instantiation)
+ADIOS2_FOREACH_STDTYPE_1ARG(declare_template_instantiation)
 #undef declare_template_instantiation
 
 } // end namespace formata
