@@ -625,6 +625,12 @@ SstStream SstReaderOpen(const char *Name, SstParams Params, SMPI_Comm comm)
         CP_verbose(Stream, SummaryVerbose,
                    "Writer is doing FFS-based marshalling\n");
     }
+    if ((Stream->WriterConfigParams->MarshalMethod == SstMarshalCP) &&
+        (Stream->Rank == 0))
+    {
+        CP_verbose(Stream, SummaryVerbose,
+                   "Writer is doing CapnProto-based marshalling\n");
+    }
     if ((Stream->WriterConfigParams->MarshalMethod == SstMarshalBP) &&
         (Stream->Rank == 0))
     {
@@ -906,6 +912,8 @@ void CP_TimestepMetadataHandler(CManager cm, CMConnection conn, void *Msg_v,
         /* arrange for this message data to stay around */
         CMtake_buffer(cm, Msg);
 
+        printf("Received metadata, INcoming block is %p\n",
+               Msg->Metadata[0].block);
         queueTimestepMetadataMsgAndNotify(Stream, Msg, conn);
     }
     STREAM_MUTEX_UNLOCK(Stream);
@@ -1535,7 +1543,8 @@ extern void SstReleaseStep(SstStream Stream)
                             Stream->CPInfo->SharedCM->ReleaseTimestepFormat,
                             &Msg, &Msg.WSR_Stream);
 
-    if (Stream->WriterConfigParams->MarshalMethod == SstMarshalFFS)
+    if ((Stream->ConfigParams->MarshalMethod == SstMarshalFFS) ||
+        (Stream->ConfigParams->MarshalMethod == SstMarshalCP))
     {
         FFSClearTimestepData(Stream);
     }
@@ -1743,11 +1752,13 @@ static SstStatusValue SstAdvanceStepPeer(SstStream Stream, SstStepMode mode,
     {
         NotifyDPArrivedMetadata(Stream, Entry->MetadataMsg);
 
-        if (Stream->WriterConfigParams->MarshalMethod == SstMarshalFFS)
+        printf("Got metadataa, \n");
+        if ((Stream->WriterConfigParams->MarshalMethod == SstMarshalFFS) ||
+            (Stream->WriterConfigParams->MarshalMethod == SstMarshalCP))
         {
-            TAU_START("FFS marshaling case");
+            TAU_START("FFS/CP marshaling case");
             FFSMarshalInstallMetadata(Stream, Entry->MetadataMsg);
-            TAU_STOP("FFS marshaling case");
+            TAU_STOP("FFS/CP marshaling case");
         }
         Stream->ReaderTimestep = Entry->MetadataMsg->Timestep;
         SstFullMetadata Mdata = malloc(sizeof(struct _SstFullMetadata));
@@ -2008,7 +2019,9 @@ static SstStatusValue SstAdvanceStepMin(SstStream Stream, SstStepMode mode,
         NotifyDPArrivedMetadata(Stream, MetadataMsg);
 
         Stream->ReaderTimestep = MetadataMsg->Timestep;
-        if (Stream->WriterConfigParams->MarshalMethod == SstMarshalFFS)
+        printf("Got metadata2 \n");
+        if ((Stream->WriterConfigParams->MarshalMethod == SstMarshalFFS) ||
+            (Stream->WriterConfigParams->MarshalMethod == SstMarshalCP))
         {
             CP_verbose(Stream, TraceVerbose,
                        "Calling install  metadata from metadata block %p\n",

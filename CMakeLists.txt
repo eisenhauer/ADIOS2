@@ -71,7 +71,7 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
 endif()
 
 # Force C++11 and C99
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 if(NOT MSVC)
   set(CMAKE_C_STANDARD 99)
@@ -88,10 +88,11 @@ mark_as_advanced(ADIOS2_LIBRARY_SUFFIX ADIOS2_EXECUTABLE_SUFFIX)
 
 # Use meta-compile features if available, otherwise use specific language
 # features
+set(CMAKE_CXX_STANDARD 14)
 if(CMAKE_CXX_COMPILER_ID MATCHES "^(GNU|Intel|Clang|AppleClang|MSVC)$")
   set(ADIOS2_CXX11_FEATURES cxx_auto_type cxx_nullptr)
 else()
-  set(ADIOS2_CXX11_FEATURES cxx_std_11)
+  set(ADIOS2_CXX11_FEATURES cxx_std_14)
 endif()
 if(CMAKE_C_COMPILER_ID MATCHES "^(GNU|Intel|Clang|AppleClang|MSVC)$")
   set(ADIOS2_C99_FEATURES c_restrict)
@@ -166,6 +167,7 @@ install(FILES ${PROJECT_BINARY_DIR}/source/adios2/common/ADIOSConfig.h
 #------------------------------------------------------------------------------#
 option(ADIOS2_RUN_INSTALL_TEST "Enable / disable the install test" TRUE)
 mark_as_advanced(ADIOS2_RUN_INSTALL_TEST)
+link_directories(/Users/eisen/lib)
 if(BUILD_SHARED_LIBS AND ADIOS2_RUN_INSTALL_TEST)
   set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
   string(REGEX REPLACE "[^/]+" ".." relative_base "${CMAKE_INSTALL_LIBDIR}")

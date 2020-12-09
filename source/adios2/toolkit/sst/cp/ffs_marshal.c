@@ -307,14 +307,7 @@ static void AddVarArrayField(FMFieldList *FieldP, int *CountP, const char *Name,
     (*FieldP)[*CountP - 1].field_size = ElementSize;
 }
 
-struct FFSMetadataInfoStruct
-{
-    size_t BitFieldCount;
-    size_t *BitField;
-    size_t DataBlockSize;
-};
-
-static int FFSBitfieldTest(struct FFSMetadataInfoStruct *MBase, int Bit);
+extern int FFSBitfieldTest(struct FFSMetadataInfoStruct *MBase, int Bit);
 
 static void InitMarshalData(SstStream Stream)
 {
@@ -389,6 +382,8 @@ extern void FFSFreeMarshalData(SstStream Stream)
                 free(Info->WriterInfo);
             if (Info->MetadataBaseAddrs)
                 free(Info->MetadataBaseAddrs);
+            if (Info->DataSizes)
+                free(Info->DataSizes);
             if (Info->MetadataFieldLists)
                 free(Info->MetadataFieldLists);
             if (Info->DataBaseAddrs)
@@ -444,6 +439,7 @@ static FFSWriterRec CreateWriterRec(SstStream Stream, void *Variable,
     Rec->FieldID = Info->RecCount;
     Rec->DimCount = DimCount;
     Rec->Type = Type;
+    Rec->Name = strdup(Name);
     if (DimCount == 0)
     {
         // simple field, only add base value FMField to metadata
@@ -513,14 +509,6 @@ typedef struct _ArrayRec
     size_t ElemCount;
     void *Array;
 } ArrayRec;
-
-typedef struct _MetaArrayRec
-{
-    size_t Dims;
-    size_t *Shape;
-    size_t *Count;
-    size_t *Offsets;
-} MetaArrayRec;
 
 typedef struct _FFSTimestepInfo
 {
@@ -618,7 +606,7 @@ static FFSVarRec LookupVarByKey(SstStream Stream, void *Key)
     return NULL;
 }
 
-static FFSVarRec LookupVarByName(SstStream Stream, const char *Name)
+extern FFSVarRec LookupVarByName(SstStream Stream, const char *Name)
 {
     struct FFSReaderMarshalBase *Info = Stream->ReaderMarshalData;
 
@@ -633,12 +621,12 @@ static FFSVarRec LookupVarByName(SstStream Stream, const char *Name)
     return NULL;
 }
 
-static FFSVarRec CreateVarRec(SstStream Stream, const char *ArrayName)
+extern FFSVarRec CreateVarRec(SstStream Stream, const char *ArrayName)
 {
     struct FFSReaderMarshalBase *Info = Stream->ReaderMarshalData;
     Info->VarList =
         realloc(Info->VarList, sizeof(Info->VarList[0]) * (Info->VarCount + 1));
-    FFSVarRec Ret = calloc(1, sizeof(struct FFSVarRec));
+    FFSVarRec Ret = calloc(1, sizeof(struct FFSVarRecStruct));
     Ret->VarName = strdup(ArrayName);
     Ret->PerWriterMetaFieldOffset =
         calloc(sizeof(size_t), Stream->WriterCohortSize);
@@ -693,6 +681,10 @@ extern int SstFFSGetDeferred(SstStream Stream, void *Variable, const char *Name,
         void *IncomingDataBase =
             ((char *)Info->MetadataBaseAddrs[GetFromWriter]) +
             Var->PerWriterMetaFieldOffset[GetFromWriter];
+        printf("FFS get deferred, size %d, Offset %ld, Base %p, value %g\n",
+               Var->ElementSize, Var->PerWriterMetaFieldOffset[GetFromWriter],
+               Info->MetadataBaseAddrs[GetFromWriter],
+               *(double *)IncomingDataBase);
         memcpy(Data, IncomingDataBase, Var->ElementSize);
         return 0; // No Sync needed
     }
@@ -733,6 +725,10 @@ extern int SstFFSGetLocalDeferred(SstStream Stream, void *Variable,
         void *IncomingDataBase =
             ((char *)Info->MetadataBaseAddrs[GetFromWriter]) +
             Var->PerWriterMetaFieldOffset[GetFromWriter];
+        printf("Local get deferred, size %d, Offset %ld, Base %p, value %g\n",
+               Var->ElementSize, Var->PerWriterMetaFieldOffset[GetFromWriter],
+               Info->MetadataBaseAddrs[GetFromWriter],
+               *(double *)IncomingDataBase);
         memcpy(Data, IncomingDataBase, Var->ElementSize);
         return 0; // No Sync needed
     }
@@ -806,6 +802,8 @@ static void IssueReadRequests(SstStream Stream, FFSArrayRequest Reqs)
 
     for (int i = 0; i < Stream->WriterCohortSize; i++)
     {
+        printf("In issue read requests, Writer %d, needed %d\n", i,
+               Info->WriterInfo[i].Status);
         if (Info->WriterInfo[i].Status == Needed)
         {
             size_t DataSize =
@@ -818,6 +816,8 @@ static void IssueReadRequests(SstStream Stream, FFSArrayRequest Reqs)
 
             char tmpstr[256] = {0};
             sprintf(tmpstr, "Request to rank %d, bytes", i);
+            printf("Requesting %ld bytes from rank %d into buffer %p\n",
+                   DataSize, i, Info->WriterInfo[i].RawBuffer);
             TAU_SAMPLE_COUNTER(tmpstr, (double)DataSize);
             Info->WriterInfo[i].ReadHandle = SstReadRemoteMemory(
                 Stream, i, Stream->ReaderTimestep, 0, DataSize,
@@ -1091,7 +1091,7 @@ void ExtractSelectionFromPartialRM(int ElementSize, size_t Dims,
     free(FirstIndex);
 }
 
-static void ReverseDimensions(size_t *Dimensions, int count)
+extern void ReverseDimensions(size_t *Dimensions, int count)
 {
     for (int i = 0; i < count / 2; i++)
     {
@@ -1400,6 +1400,11 @@ extern SstStatusValue SstFFSPerformGets(SstStream Stream)
     return Ret;
 }
 
+extern void *CapnProtoEncode(SstStream Stream, void *MData,
+                             size_t *DataSizePtr);
+extern void CapnProtoBuildVarList(SstStream Stream, char *msg, size_t size,
+                                  int WriterRank);
+
 extern void SstFFSWriterEndStep(SstStream Stream, size_t Timestep)
 {
     struct FFSWriterMarshalBase *Info;
@@ -1461,6 +1466,8 @@ extern void SstFFSWriterEndStep(SstStream Stream, size_t Timestep)
         Block->FormatIDRep = get_server_ID_FMformat(Format, &size);
         Block->FormatIDRepLen = size;
         Block->Next = NULL;
+        printf("Adding a dataformat with server rep len %ld\n",
+               Block->FormatServerRepLen);
         if (Formats)
         {
             Block->Next = Formats;
@@ -1522,11 +1529,21 @@ extern void SstFFSWriterEndStep(SstStream Stream, size_t Timestep)
 
     MBase = Stream->M;
     MBase->DataBlockSize = DataSize;
-    MetaDataRec.block =
-        FFSencode(MetaEncodeBuffer, Info->MetaFormat, Stream->M, &MetaDataSize);
-    MetaDataRec.DataSize = MetaDataSize;
+    if (Stream->ConfigParams->MarshalMethod == SstMarshalCP)
+    {
+        size_t CapnpSize;
+        MetaDataRec.block = CapnProtoEncode(Stream, Stream->M, &CapnpSize);
+        MetaDataRec.DataSize = CapnpSize;
+        printf("Capn proto block %p, size %ld\n", MetaDataRec.block,
+               MetaDataRec.DataSize);
+    }
+    else
+    {
+        MetaDataRec.block = FFSencode(MetaEncodeBuffer, Info->MetaFormat,
+                                      Stream->M, &MetaDataSize);
+        MetaDataRec.DataSize = MetaDataSize;
+    }
     TSInfo->MetaEncodeBuffer = MetaEncodeBuffer;
-
     if (Info->AttributeFields)
     {
         AttributeEncodeBuffer = create_FFSBuffer();
@@ -1681,6 +1698,8 @@ static void LoadFormats(SstStream Stream, FFSFormatList Formats)
     {
         char *FormatID = malloc(Entry->FormatIDRepLen);
         char *FormatServerRep = malloc(Entry->FormatServerRepLen);
+        printf("Loading a format with server rep len %ld\n",
+               Entry->FormatServerRepLen);
         memcpy(FormatID, Entry->FormatIDRep, Entry->FormatIDRepLen);
         memcpy(FormatServerRep, Entry->FormatServerRep,
                Entry->FormatServerRepLen);
@@ -1989,10 +2008,21 @@ extern void FFSMarshalInstallPreciousMetadata(SstStream Stream,
 extern void FFSMarshalInstallMetadata(SstStream Stream, TSMetadataMsg MetaData)
 {
     FFSMarshalInstallPreciousMetadata(Stream, MetaData);
-
-    for (int i = 0; i < Stream->WriterCohortSize; i++)
+    if (Stream->WriterConfigParams->MarshalMethod == SstMarshalFFS)
     {
-        BuildVarList(Stream, MetaData, i);
+
+        for (int i = 0; i < Stream->WriterCohortSize; i++)
+        {
+            BuildVarList(Stream, MetaData, i);
+        }
+    }
+    else
+    {
+        for (int i = 0; i < Stream->WriterCohortSize; i++)
+        {
+            CapnProtoBuildVarList(Stream, MetaData->Metadata[i].block,
+                                  MetaData->Metadata[i].DataSize, i);
+        }
     }
 }
 
@@ -2011,7 +2041,7 @@ static void FFSBitfieldSet(struct FFSMetadataInfoStruct *MBase, int Bit)
     MBase->BitField[Element] |= (1 << ElementBit);
 }
 
-static int FFSBitfieldTest(struct FFSMetadataInfoStruct *MBase, int Bit)
+extern int FFSBitfieldTest(struct FFSMetadataInfoStruct *MBase, int Bit)
 {
     int Element = Bit / (sizeof(size_t) * 8);
     int ElementBit = Bit % (sizeof(size_t) * 8);

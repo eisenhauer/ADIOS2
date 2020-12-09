@@ -327,6 +327,10 @@ if(ADIOS2_USE_SST AND NOT MSVC)
       set(ADIOS2_SST_HAVE_CRAY_DRC TRUE)
     endif()
   endif()
+  find_package(CapnProto)
+  if (CapnProto_FOUND)
+     message(STATUS "Got CAPNP!")
+  endif()
 endif()
 
 #SysV IPC

@@ -9,14 +9,35 @@ add_library(sst OBJECT
   cp/cp_writer.c
   cp/cp_common.c
   cp/ffs_marshal.c
+#  cp/capnp/adios.capnp.c++
+#  cp/capnp/marshal.cpp
   sst_comm.cpp
 )
 if(BUILD_SHARED_LIBS)
   set_property(TARGET sst PROPERTY POSITION_INDEPENDENT_CODE 1)
 endif()
 
-target_link_libraries(sst PRIVATE taustubs)
+if (CapnProto_FOUND)
+   target_sources(sst PRIVATE cp/capnp/adios.capnp.c++ cp/capnp/marshal.cpp)
+#   set_source_files_properties(  cp/capnp/adios.capnp.c++ cp/capnp/marshal.cpp PROPERTIES COMPILE_FLAGS "-std=c++14 -I/Users/eisen/include " )
+   target_link_libraries(sst PRIVATE ${CAPNP_LIB_CAPNP} ${CAPNP_LIB_KJ})
+   add_custom_command(
+      OUTPUT "adios.capnp.c++" "adios.capnp.h"
+      COMMAND "${CAPNP_EXECUTABLE}"
+      ARGS compile
+          -o ${CAPNPC_CXX_EXECUTABLE}${output_dir}
+          --src-prefix ${CAPNPC_SRC_PREFIX}
+          ${include_path}
+          ${CAPNPC_FLAGS}
+          ${file_path}
+      DEPENDS "adios.capnp"
+      COMMENT "Compiling Cap'n Proto schema adios.capnp"
+      VERBATIM
+    )
+endif()   
 
+
+target_link_libraries(sst PRIVATE taustubs)
 if(ADIOS2_SST_HAVE_LIBFABRIC)
   target_sources(sst PRIVATE dp/rdma_dp.c)
   target_link_libraries(sst PRIVATE libfabric::libfabric)
@@ -47,6 +68,7 @@ set(SST_CONFIG_OPTS
   FI_GNI
   CRAY_DRC
   NVStream
+  CapnProto
 )
 include(SSTFunctions)
 GenerateSSTHeaderConfig(${SST_CONFIG_OPTS})

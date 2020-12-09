@@ -1,3 +1,6 @@
+#ifndef FFS_MARSHAL_H_
+#define FFS_MARSHAL_H_
+
 enum DataType
 {
     None,
@@ -26,6 +29,7 @@ typedef struct _FFSWriterRec
     size_t MetaOffset;
     int DimCount;
     int Type;
+    char *Name;
 } * FFSWriterRec;
 
 struct FFSWriterMarshalBase
@@ -48,7 +52,7 @@ struct FFSWriterMarshalBase
     attr_list ZFPParams;
 };
 
-typedef struct FFSVarRec
+typedef struct FFSVarRecStruct
 {
     void *Variable;
     char *VarName;
@@ -70,7 +74,7 @@ enum FFSRequestTypeEnum
     Local = 1
 };
 
-typedef struct FFSArrayRequest
+typedef struct FFSArrayRequestStruct
 {
     FFSVarRec VarRec;
     enum FFSRequestTypeEnum RequestType;
@@ -78,7 +82,7 @@ typedef struct FFSArrayRequest
     size_t *Start;
     size_t *Count;
     void *Data;
-    struct FFSArrayRequest *Next;
+    struct FFSArrayRequestStruct *Next;
 } * FFSArrayRequest;
 
 enum WriterDataStatusEnum
@@ -122,6 +126,7 @@ struct FFSReaderMarshalBase
     FFSArrayRequest PendingVarRequests;
 
     void **MetadataBaseAddrs;
+    size_t *DataSizes;
     FMFieldList *MetadataFieldLists;
 
     void **DataBaseAddrs;
@@ -138,3 +143,25 @@ extern void *FFS_ZFPDecompress(SstStream Stream, const size_t DimCount,
                                int Type, void *bufferIn, const size_t sizeIn,
                                const size_t *Dimensions, attr_list Parameters);
 extern int ZFPcompressionPossible(const int Type, const int DimCount);
+
+struct FFSMetadataInfoStruct
+{
+    size_t BitFieldCount;
+    size_t *BitField;
+    size_t DataBlockSize;
+};
+
+typedef struct _MetaArrayRec
+{
+    size_t Dims;
+    size_t *Shape;
+    size_t *Count;
+    size_t *Offsets;
+} MetaArrayRec;
+
+extern int FFSBitfieldTest(struct FFSMetadataInfoStruct *MBase, int Bit);
+extern FFSVarRec LookupVarByName(SstStream Stream, const char *Name);
+extern void ReverseDimensions(size_t *Dimensions, int count);
+extern FFSVarRec CreateVarRec(SstStream Stream, const char *ArrayName);
+
+#endif /* FFS_MARSHAL_H_ */
