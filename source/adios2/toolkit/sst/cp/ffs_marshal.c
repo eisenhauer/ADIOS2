@@ -399,13 +399,15 @@ extern void FFSFreeMarshalData(SstStream Stream)
                 {
                     for (int j = 0; j < Stream->WriterCohortSize; j++)
                     {
-                        if (Info->VarList[i]->PerWriterStart[j])
+                        if (Info->VarList[i]->PerWriterStart &&
+                            Info->VarList[i]->PerWriterStart[j])
                             free(Info->VarList[i]->PerWriterStart[j]);
                         if (Info->VarList[i]->PerWriterCounts[j])
                             free(Info->VarList[i]->PerWriterCounts[j]);
                     }
                 }
-                free(Info->VarList[i]->PerWriterStart);
+                if (Info->VarList[i]->PerWriterStart)
+                    free(Info->VarList[i]->PerWriterStart);
                 free(Info->VarList[i]->PerWriterCounts);
                 free(Info->VarList[i]->PerWriterIncomingData);
                 free(Info->VarList[i]->PerWriterIncomingSize);
@@ -1306,7 +1308,9 @@ static void FillReadRequests(SstStream Stream, FFSArrayRequest Reqs)
                 int DimCount = Reqs->VarRec->DimCount;
                 size_t *GlobalDimensions = Reqs->VarRec->GlobalDims;
                 size_t *GlobalDimensionsFree = NULL;
-                size_t *RankOffset = Reqs->VarRec->PerWriterStart[i];
+                size_t *RankOffset = Reqs->VarRec->PerWriterStart
+                                         ? Reqs->VarRec->PerWriterStart[i]
+                                         : NULL;
                 size_t *RankOffsetFree = NULL;
                 size_t *RankSize = Reqs->VarRec->PerWriterCounts[i];
                 size_t *SelOffset = Reqs->Start;

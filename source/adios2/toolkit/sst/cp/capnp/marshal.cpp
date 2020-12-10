@@ -347,15 +347,20 @@ extern "C" void CapnProtoBuildVarList(SstStream Stream, unsigned char *MData,
                 VarRec->Variable = Stream->ArraySetupUpcall(
                     Stream->SetupUpcallReader, VarRec->VarName, VarRec->Type,
                     VarRec->DimCount, VarRec->GlobalDims,
-                    VarRec->PerWriterStart[WriterRank],
-                    VarRec->PerWriterCounts[WriterRank]);
+                    VarRec->PerWriterStart ? VarRec->PerWriterStart[WriterRank]
+                                           : NULL,
+                    VarRec->PerWriterCounts
+                        ? VarRec->PerWriterCounts[WriterRank]
+                        : NULL);
             }
             VarRec->PerWriterDataFieldDesc[WriterRank] = NULL;
             Stream->ArrayBlocksInfoUpcall(
                 Stream->SetupUpcallReader, VarRec->Variable, VarRec->Type,
                 WriterRank, VarRec->DimCount, VarRec->GlobalDims,
-                VarRec->PerWriterStart[WriterRank],
-                VarRec->PerWriterCounts[WriterRank]);
+                VarRec->PerWriterStart ? VarRec->PerWriterStart[WriterRank]
+                                       : NULL,
+                VarRec->PerWriterCounts ? VarRec->PerWriterCounts[WriterRank]
+                                        : NULL);
         }
         else
         {
