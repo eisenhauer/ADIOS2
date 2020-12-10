@@ -1543,9 +1543,11 @@ extern void SstReleaseStep(SstStream Stream)
                             Stream->CPInfo->SharedCM->ReleaseTimestepFormat,
                             &Msg, &Msg.WSR_Stream);
 
-    if ((Stream->ConfigParams->MarshalMethod == SstMarshalFFS) ||
-        (Stream->ConfigParams->MarshalMethod == SstMarshalCP))
+    printf("about to clear timestep\n");
+    if ((Stream->WriterConfigParams->MarshalMethod == SstMarshalFFS) ||
+        (Stream->WriterConfigParams->MarshalMethod == SstMarshalCP))
     {
+        printf("    clearing timestep\n");
         FFSClearTimestepData(Stream);
     }
     TAU_STOP_FUNC();

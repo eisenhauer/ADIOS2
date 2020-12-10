@@ -18,20 +18,20 @@ if(BUILD_SHARED_LIBS)
 endif()
 
 if (CapnProto_FOUND)
-   target_sources(sst PRIVATE cp/capnp/adios.capnp.c++ cp/capnp/marshal.cpp)
-#   set_source_files_properties(  cp/capnp/adios.capnp.c++ cp/capnp/marshal.cpp PROPERTIES COMPILE_FLAGS "-std=c++14 -I/Users/eisen/include " )
-   target_link_libraries(sst PRIVATE ${CAPNP_LIB_CAPNP} ${CAPNP_LIB_KJ})
+   target_sources(sst PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/adios.capnp.c++ cp/capnp/marshal.cpp)
+   target_link_libraries(sst PRIVATE CapnProto::capnp CapnProto::capnp CapnProto::kj)
    add_custom_command(
       OUTPUT "adios.capnp.c++" "adios.capnp.h"
       COMMAND "${CAPNP_EXECUTABLE}"
       ARGS compile
-          -o ${CAPNPC_CXX_EXECUTABLE}${output_dir}
-          --src-prefix ${CAPNPC_SRC_PREFIX}
+          -o ${CAPNPC_CXX_EXECUTABLE}:${CMAKE_CURRENT_BINARY_DIR}
+          --src-prefix ${CMAKE_CURRENT_SOURCE_DIR}/cp/capnp/
           ${include_path}
           ${CAPNPC_FLAGS}
-          ${file_path}
-      DEPENDS "adios.capnp"
+          ${CMAKE_CURRENT_SOURCE_DIR}/cp/capnp/adios.capnp
+      DEPENDS "cp/capnp/adios.capnp"
       COMMENT "Compiling Cap'n Proto schema adios.capnp"
+      WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
       VERBATIM
     )
 endif()   

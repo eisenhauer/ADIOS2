@@ -1730,14 +1730,19 @@ extern void FFSClearTimestepData(SstStream Stream)
            sizeof(Info->WriterInfo[0]) * Stream->WriterCohortSize);
     memset(Info->MetadataBaseAddrs, 0,
            sizeof(Info->MetadataBaseAddrs[0]) * Stream->WriterCohortSize);
-    memset(Info->MetadataFieldLists, 0,
-           sizeof(Info->MetadataFieldLists[0]) * Stream->WriterCohortSize);
+    if (Info->MetadataFieldLists)
+    {
+        memset(Info->MetadataFieldLists, 0,
+               sizeof(Info->MetadataFieldLists[0]) * Stream->WriterCohortSize);
+    }
     memset(Info->DataBaseAddrs, 0,
            sizeof(Info->DataBaseAddrs[0]) * Stream->WriterCohortSize);
     memset(Info->DataFieldLists, 0,
            sizeof(Info->DataFieldLists[0]) * Stream->WriterCohortSize);
+    printf("in clear, var count is %d\n", Info->VarCount);
     for (int i = 0; i < Info->VarCount; i++)
     {
+        printf("Clearing Variable %s\n", Info->VarList[i]->VarName);
         Info->VarList[i]->Variable = NULL;
     }
 }

@@ -329,7 +329,7 @@ if(ADIOS2_USE_SST AND NOT MSVC)
   endif()
   find_package(CapnProto)
   if (CapnProto_FOUND)
-     message(STATUS "Got CAPNP!")
+      set(ADIOS2_SST_HAVE_CapnProto TRUE)
   endif()
 endif()
 

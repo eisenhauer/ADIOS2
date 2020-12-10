@@ -1,4 +1,4 @@
-#include "cp/capnp/adios.capnp.h"
+#include "adios.capnp.h"
 #include <capnp/message.h>
 #include <capnp/pretty-print.h>
 #include <capnp/serialize-packed.h>
@@ -77,16 +77,16 @@ extern "C" void *CapnProtoEncode(SstStream Stream, void *MData,
                 gvar.setDouble(*(double *)ptr);
                 break;
             case LongDouble: //    LongDouble
-                     //                gvar.setLongDouble();
+                             //                gvar.setLongDouble();
                 break;
             case FloatComplex: //    FloatComplex
-                     //                gvar.setInt64();
+                               //                gvar.setInt64();
                 break;
             case DoubleComplex: //    DoubleComplex
-                     //                gvar.setInt64();
+                                //                gvar.setInt64();
                 break;
             case String: //    String
-                     //                gvar.setInt64();
+                         //                gvar.setInt64();
                 break;
             }
         }
@@ -141,32 +141,43 @@ extern "C" void *CapnProtoEncode(SstStream Stream, void *MData,
     return ret;
 }
 
-#define ROUNDUP(n,width) (((n) + (width) - 1) & ~unsigned((width) - 1))
-#define NextOffsetLoc(ptr) ((char*)ptr + ROUNDUP(sizeof(struct FFSMetadataInfoStruct), sizeof(size_t)))
-static void *InitMetadataBase(SstStream Stream, int WriterRank, size_t DataBlockSize)
+#define ROUNDUP(n, width) (((n) + (width)-1) & ~unsigned((width)-1))
+#define NextOffsetLoc(ptr)                                                     \
+    ((char *)ptr +                                                             \
+     ROUNDUP(sizeof(struct FFSMetadataInfoStruct), sizeof(size_t)))
+static void *InitMetadataBase(SstStream Stream, int WriterRank,
+                              size_t DataBlockSize)
 {
     struct FFSReaderMarshalBase *Info =
         (struct FFSReaderMarshalBase *)Stream->ReaderMarshalData;
     int ObjSize = sizeof(struct FFSMetadataInfoStruct) + sizeof(size_t);
-    Info->MetadataBaseAddrs[WriterRank] = malloc(ROUNDUP(ObjSize, sizeof(size_t)));
-    ((struct FFSMetadataInfoStruct *)Info->MetadataBaseAddrs[WriterRank])->DataBlockSize = DataBlockSize;
-    *(NextOffsetLoc(Info->MetadataBaseAddrs[WriterRank])) = ROUNDUP(ObjSize, sizeof(size_t));
+    Info->MetadataBaseAddrs[WriterRank] =
+        malloc(ROUNDUP(ObjSize, sizeof(size_t)));
+    ((struct FFSMetadataInfoStruct *)Info->MetadataBaseAddrs[WriterRank])
+        ->DataBlockSize = DataBlockSize;
+    *(NextOffsetLoc(Info->MetadataBaseAddrs[WriterRank])) =
+        ROUNDUP(ObjSize, sizeof(size_t));
     return Info->MetadataBaseAddrs[WriterRank];
 }
-								   
-static size_t
-AddDataToMetadataBase(SstStream Stream, int WriterRank, void *Data, int ElementSize)
+
+static size_t AddDataToMetadataBase(SstStream Stream, int WriterRank,
+                                    void *Data, int ElementSize)
 {
     struct FFSReaderMarshalBase *Info =
         (struct FFSReaderMarshalBase *)Stream->ReaderMarshalData;
     size_t DataLoc = *(NextOffsetLoc(Info->MetadataBaseAddrs[WriterRank]));
-    Info->MetadataBaseAddrs[WriterRank] = realloc(Info->MetadataBaseAddrs[WriterRank],
-						  ROUNDUP(DataLoc + ElementSize, sizeof(size_t)));
-    if (ElementSize == 8) {
-	printf("placing value %g at location %ld, base %p\n", *(double*)Data, DataLoc, Info->MetadataBaseAddrs[WriterRank] );
+    Info->MetadataBaseAddrs[WriterRank] =
+        realloc(Info->MetadataBaseAddrs[WriterRank],
+                ROUNDUP(DataLoc + ElementSize, sizeof(size_t)));
+    if (ElementSize == 8)
+    {
+        printf("placing value %g at location %ld, base %p\n", *(double *)Data,
+               DataLoc, Info->MetadataBaseAddrs[WriterRank]);
     }
-    memcpy(((char*)Info->MetadataBaseAddrs[WriterRank]) + DataLoc, Data, ElementSize);
-    *(NextOffsetLoc(Info->MetadataBaseAddrs[WriterRank])) = ROUNDUP(DataLoc + ElementSize, sizeof(size_t));
+    memcpy(((char *)Info->MetadataBaseAddrs[WriterRank]) + DataLoc, Data,
+           ElementSize);
+    *(NextOffsetLoc(Info->MetadataBaseAddrs[WriterRank])) =
+        ROUNDUP(DataLoc + ElementSize, sizeof(size_t));
     return DataLoc;
 }
 
@@ -214,8 +225,10 @@ extern "C" void CapnProtoBuildVarList(SstStream Stream, unsigned char *MData,
             sizeof(Info->WriterInfo[0]), Stream->WriterCohortSize);
         Info->MetadataBaseAddrs = (void **)calloc(
             sizeof(Info->MetadataBaseAddrs[0]), Stream->WriterCohortSize);
-        Info->DataBaseAddrs = (void**)calloc(sizeof(Info->DataBaseAddrs[0]), Stream->WriterCohortSize);
-	Info->DataFieldLists = (FMField**)calloc(sizeof(Info->DataFieldLists[0]),     Stream->WriterCohortSize);
+        Info->DataBaseAddrs = (void **)calloc(sizeof(Info->DataBaseAddrs[0]),
+                                              Stream->WriterCohortSize);
+        Info->DataFieldLists = (FMField **)calloc(
+            sizeof(Info->DataFieldLists[0]), Stream->WriterCohortSize);
     }
 
     if (!MData)
@@ -239,7 +252,8 @@ extern "C" void CapnProtoBuildVarList(SstStream Stream, unsigned char *MData,
         std::cout << data << std::endl;
     }
 
-    Info->MetadataBaseAddrs[WriterRank] = InitMetadataBase(Stream, WriterRank, DataBlockSize);
+    Info->MetadataBaseAddrs[WriterRank] =
+        InitMetadataBase(Stream, WriterRank, DataBlockSize);
     for (TSGroup::VariableInfo::Reader var : tsgroup.getVariables())
     {
         // FFSVarRec VarRec = ControlArray[i].VarRec;
@@ -335,12 +349,18 @@ extern "C" void CapnProtoBuildVarList(SstStream Stream, unsigned char *MData,
             if (!VarRec->Variable)
             {
                 std::cout << "Creating array variable " << VarRec->VarName
-                          << " of type " << VarRec->Type << "and size " << VarRec->ElementSize << std::endl;
+                          << " of type " << VarRec->Type << "and size "
+                          << VarRec->ElementSize << std::endl;
                 VarRec->Variable = Stream->ArraySetupUpcall(
                     Stream->SetupUpcallReader, VarRec->VarName, VarRec->Type,
                     VarRec->DimCount, VarRec->GlobalDims,
                     VarRec->PerWriterStart[WriterRank],
                     VarRec->PerWriterCounts[WriterRank]);
+            }
+            else
+            {
+                std::cout << "Found existing variable " << VarRec->VarName
+                          << std::endl;
             }
             VarRec->PerWriterDataFieldDesc[WriterRank] = NULL;
             Stream->ArrayBlocksInfoUpcall(
@@ -410,7 +430,7 @@ extern "C" void CapnProtoBuildVarList(SstStream Stream, unsigned char *MData,
                 break;
             case TSGroup::GlobalVariableInfo::DOUBLE:
                 *((double *)&data[0]) = global.getDouble();
-		printf("Pulling value %g\n", *(double*)&data[0]);
+                printf("Pulling value %g\n", *(double *)&data[0]);
                 Type = Double;
                 ElementSize = 8;
                 break;
@@ -443,15 +463,18 @@ extern "C" void CapnProtoBuildVarList(SstStream Stream, unsigned char *MData,
             {
                 std::cout << "Creating variable " << VarRec->VarName
                           << " of type " << VarRec->Type << std::endl;
-		if (Type == Double) {
-		    printf("with value  %g \n", *(double*)&data[0]);
-		}
+                if (Type == Double)
+                {
+                    printf("with value  %g \n", *(double *)&data[0]);
+                }
                 VarRec->Variable = Stream->VarSetupUpcall(
                     Stream->SetupUpcallReader, VarRec->VarName, VarRec->Type,
                     &data[0]);
             }
             VarRec->PerWriterDataFieldDesc[WriterRank] = NULL;
-	    VarRec->PerWriterMetaFieldOffset[WriterRank] = AddDataToMetadataBase(Stream, WriterRank, &data[0], ElementSize);
+            VarRec->PerWriterMetaFieldOffset[WriterRank] =
+                AddDataToMetadataBase(Stream, WriterRank, &data[0],
+                                      ElementSize);
         }
     }
 }
