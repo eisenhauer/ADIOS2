@@ -13,6 +13,14 @@ struct TSGroup {
        global @1 :GlobalVariableInfo;
     }
   }  	 
+  struct FComplex {
+     i @0 : Float32;
+     r @1 : Float32;
+  }
+  struct DComplex {
+     i @0 : Float64;
+     r @1 : Float64;
+  }
   struct GlobalVariableInfo {
     number @0 :UInt32;
     name @11 :Text;
@@ -27,6 +35,9 @@ struct TSGroup {
       uint64 @8 : UInt64;
       double @9 : Float64;
       float @10 : Float32;
+      fcomplex @12 : FComplex;
+      dcomplex @13 : DComplex;
+      string @14 : Text;
     }
   }
 

@@ -77,16 +77,23 @@ extern "C" void *CapnProtoEncode(SstStream Stream, void *MData,
                 gvar.setDouble(*(double *)ptr);
                 break;
             case LongDouble: //    LongDouble
-                             //                gvar.setLongDouble();
                 break;
             case FloatComplex: //    FloatComplex
-                               //                gvar.setInt64();
+            {
+                auto fc = gvar.initFcomplex();
+                fc.setI(((float *)ptr)[0]);
+                fc.setR(((float *)ptr)[1]);
                 break;
+            }
             case DoubleComplex: //    DoubleComplex
-                                //                gvar.setInt64();
+            {
+                auto dc = gvar.initDcomplex();
+                dc.setI(((double *)ptr)[0]);
+                dc.setR(((double *)ptr)[1]);
                 break;
-            case String: //    String
-                         //                gvar.setInt64();
+            }
+            case DataType::String: //    String
+                gvar.setString((char *)ptr);
                 break;
             }
         }
@@ -432,22 +439,32 @@ extern "C" void CapnProtoBuildVarList(SstStream Stream, unsigned char *MData,
                 Type = LongDouble;
                 ElementSize = 8;
                 break;
-            case TSGroup::GlobalVariableInfo::FLOAT_COMPLEX:
-                *((double *)&data[0]) = global.getDouble();
-                Type = Double;
-                ElementSize = 8;
-                break;
-            case TSGroup::GlobalVariableInfo::DOUBLE_COMPLEX:
-                *((double *)&data[0]) = global.getDouble();
-                Type = Double;
-                ElementSize = 8;
-                break;
-            case TSGroup::GlobalVariableInfo::String:
-                *((double *)&data[0]) = global.getDouble();
-                Type = Double;
-                ElementSize = 8;
-                break;
 #endif
+            case TSGroup::GlobalVariableInfo::FCOMPLEX:
+            {
+                auto fc = global.getFcomplex();
+                ((float *)&data[0])[0] = fc.getI();
+                ((float *)&data[0])[1] = fc.getR();
+                Type = FloatComplex;
+                ElementSize = 8;
+                break;
+            }
+            case TSGroup::GlobalVariableInfo::DCOMPLEX:
+            {
+                auto dc = global.getDcomplex();
+                ((double *)&data[0])[0] = dc.getI();
+                ((double *)&data[0])[1] = dc.getR();
+                Type = DoubleComplex;
+                ElementSize = 16;
+                break;
+            }
+            case TSGroup::GlobalVariableInfo::STRING:
+
+                const char *Name = global.getName().cStr();
+                *((const char **)&data[0]) = Name;
+                Type = String;
+                ElementSize = 8;
+                break;
             }
             VarRec->Type = Type;
             VarRec->ElementSize = ElementSize;
