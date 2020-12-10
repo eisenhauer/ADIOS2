@@ -150,7 +150,7 @@ extern "C" void *CapnProtoEncode(SstStream Stream, void *MData,
 
 #define ROUNDUP(n, width) (((n) + (width)-1) & ~unsigned((width)-1))
 #define NextOffsetLoc(ptr)                                                     \
-    ((char *)ptr +                                                             \
+    (size_t*)((char *)ptr +						\
      ROUNDUP(sizeof(struct FFSMetadataInfoStruct), sizeof(size_t)))
 static void *InitMetadataBase(SstStream Stream, int WriterRank,
                               size_t DataBlockSize)
