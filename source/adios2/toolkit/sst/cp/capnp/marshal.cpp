@@ -129,9 +129,9 @@ extern "C" void *CapnProtoEncode(SstStream Stream, void *MData,
         CPvar++;
     }
 
-    auto text = kj::str(capnp::prettyPrint(tsgroup), '\n');
-    std::string data(text.begin(), text.end());
-    std::cout << data << std::endl;
+    //    auto text = kj::str(capnp::prettyPrint(tsgroup), '\n');
+    //    std::string data(text.begin(), text.end());
+    //    std::cout << data << std::endl;
     kj::Array<const capnp::word> tmp = capnp::messageToFlatArray(message);
     auto bytes = tmp.asBytes();
     long size = bytes.size();
@@ -169,11 +169,6 @@ static size_t AddDataToMetadataBase(SstStream Stream, int WriterRank,
     Info->MetadataBaseAddrs[WriterRank] =
         realloc(Info->MetadataBaseAddrs[WriterRank],
                 ROUNDUP(DataLoc + ElementSize, sizeof(size_t)));
-    if (ElementSize == 8)
-    {
-        printf("placing value %g at location %ld, base %p\n", *(double *)Data,
-               DataLoc, Info->MetadataBaseAddrs[WriterRank]);
-    }
     memcpy(((char *)Info->MetadataBaseAddrs[WriterRank]) + DataLoc, Data,
            ElementSize);
     *(NextOffsetLoc(Info->MetadataBaseAddrs[WriterRank])) =
@@ -192,7 +187,6 @@ extern "C" void CapnProtoBuildVarList(SstStream Stream, unsigned char *MData,
     TSGroup::Reader tsgroup = message.getRoot<TSGroup>();
     auto vars = tsgroup.getVariables();
     auto DataBlockSize = tsgroup.getDataBlockSize();
-    std::cout << "Data block size is " << DataBlockSize << std::endl;
     FFSTypeHandle FFSformat;
     static int DumpMetadata = -1;
 
@@ -246,7 +240,6 @@ extern "C" void CapnProtoBuildVarList(SstStream Stream, unsigned char *MData,
     {
         printf("\nIncomingMetadatablock from WriterRank %d is %p :\n",
                WriterRank, MData);
-        std::cout << "Number of vars is " << vars.size() << std::endl;
         auto text = kj::str(capnp::prettyPrint(tsgroup), '\n');
         std::string data(text.begin(), text.end());
         std::cout << data << std::endl;
@@ -278,8 +271,9 @@ extern "C" void CapnProtoBuildVarList(SstStream Stream, unsigned char *MData,
                 {
                     int Dims = shape.size();
                     VarRec->DimCount = Dims;
-                    VarRec->GlobalDims =
-                        (size_t *)malloc(sizeof(VarRec->GlobalDims[0]) * Dims);
+                    if (!VarRec->GlobalDims)
+                        VarRec->GlobalDims = (size_t *)malloc(
+                            sizeof(VarRec->GlobalDims[0]) * Dims);
                     for (int i = 0; i < Dims; i++)
                     {
                         VarRec->GlobalDims[i] = shape[i];
@@ -304,8 +298,9 @@ extern "C" void CapnProtoBuildVarList(SstStream Stream, unsigned char *MData,
                     auto start = block.getStart();
                     int Dims = start.size();
                     VarRec->DimCount = Dims;
-                    VarRec->PerWriterStart[WriterRank] =
-                        (size_t *)malloc(sizeof(VarRec->GlobalDims[0]) * Dims);
+                    if (!VarRec->PerWriterStart[WriterRank])
+                        VarRec->PerWriterStart[WriterRank] = (size_t *)malloc(
+                            sizeof(VarRec->GlobalDims[0]) * Dims);
                     for (int i = 0; i < Dims; i++)
                     {
                         VarRec->PerWriterStart[WriterRank][i] = start[i];
@@ -326,8 +321,9 @@ extern "C" void CapnProtoBuildVarList(SstStream Stream, unsigned char *MData,
                     auto count = block.getCount();
                     int Dims = count.size();
                     VarRec->DimCount = Dims;
-                    VarRec->PerWriterCounts[WriterRank] =
-                        (size_t *)malloc(sizeof(VarRec->GlobalDims[0]) * Dims);
+                    if (!VarRec->PerWriterCounts[WriterRank])
+                        VarRec->PerWriterCounts[WriterRank] = (size_t *)malloc(
+                            sizeof(VarRec->GlobalDims[0]) * Dims);
                     for (int i = 0; i < Dims; i++)
                     {
                         VarRec->PerWriterCounts[WriterRank][i] = count[i];
@@ -348,19 +344,11 @@ extern "C" void CapnProtoBuildVarList(SstStream Stream, unsigned char *MData,
             VarRec->ElementSize = SizeArray[VarRec->Type];
             if (!VarRec->Variable)
             {
-                std::cout << "Creating array variable " << VarRec->VarName
-                          << " of type " << VarRec->Type << "and size "
-                          << VarRec->ElementSize << std::endl;
                 VarRec->Variable = Stream->ArraySetupUpcall(
                     Stream->SetupUpcallReader, VarRec->VarName, VarRec->Type,
                     VarRec->DimCount, VarRec->GlobalDims,
                     VarRec->PerWriterStart[WriterRank],
                     VarRec->PerWriterCounts[WriterRank]);
-            }
-            else
-            {
-                std::cout << "Found existing variable " << VarRec->VarName
-                          << std::endl;
             }
             VarRec->PerWriterDataFieldDesc[WriterRank] = NULL;
             Stream->ArrayBlocksInfoUpcall(
@@ -430,7 +418,6 @@ extern "C" void CapnProtoBuildVarList(SstStream Stream, unsigned char *MData,
                 break;
             case TSGroup::GlobalVariableInfo::DOUBLE:
                 *((double *)&data[0]) = global.getDouble();
-                printf("Pulling value %g\n", *(double *)&data[0]);
                 Type = Double;
                 ElementSize = 8;
                 break;
@@ -461,12 +448,6 @@ extern "C" void CapnProtoBuildVarList(SstStream Stream, unsigned char *MData,
             VarRec->ElementSize = ElementSize;
             if (!VarRec->Variable)
             {
-                std::cout << "Creating variable " << VarRec->VarName
-                          << " of type " << VarRec->Type << std::endl;
-                if (Type == Double)
-                {
-                    printf("with value  %g \n", *(double *)&data[0]);
-                }
                 VarRec->Variable = Stream->VarSetupUpcall(
                     Stream->SetupUpcallReader, VarRec->VarName, VarRec->Type,
                     &data[0]);

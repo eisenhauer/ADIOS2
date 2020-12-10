@@ -912,8 +912,6 @@ void CP_TimestepMetadataHandler(CManager cm, CMConnection conn, void *Msg_v,
         /* arrange for this message data to stay around */
         CMtake_buffer(cm, Msg);
 
-        printf("Received metadata, INcoming block is %p\n",
-               Msg->Metadata[0].block);
         queueTimestepMetadataMsgAndNotify(Stream, Msg, conn);
     }
     STREAM_MUTEX_UNLOCK(Stream);
@@ -1543,11 +1541,9 @@ extern void SstReleaseStep(SstStream Stream)
                             Stream->CPInfo->SharedCM->ReleaseTimestepFormat,
                             &Msg, &Msg.WSR_Stream);
 
-    printf("about to clear timestep\n");
     if ((Stream->WriterConfigParams->MarshalMethod == SstMarshalFFS) ||
         (Stream->WriterConfigParams->MarshalMethod == SstMarshalCP))
     {
-        printf("    clearing timestep\n");
         FFSClearTimestepData(Stream);
     }
     TAU_STOP_FUNC();
@@ -1754,7 +1750,6 @@ static SstStatusValue SstAdvanceStepPeer(SstStream Stream, SstStepMode mode,
     {
         NotifyDPArrivedMetadata(Stream, Entry->MetadataMsg);
 
-        printf("Got metadataa, \n");
         if ((Stream->WriterConfigParams->MarshalMethod == SstMarshalFFS) ||
             (Stream->WriterConfigParams->MarshalMethod == SstMarshalCP))
         {
@@ -2021,7 +2016,6 @@ static SstStatusValue SstAdvanceStepMin(SstStream Stream, SstStepMode mode,
         NotifyDPArrivedMetadata(Stream, MetadataMsg);
 
         Stream->ReaderTimestep = MetadataMsg->Timestep;
-        printf("Got metadata2 \n");
         if ((Stream->WriterConfigParams->MarshalMethod == SstMarshalFFS) ||
             (Stream->WriterConfigParams->MarshalMethod == SstMarshalCP))
         {

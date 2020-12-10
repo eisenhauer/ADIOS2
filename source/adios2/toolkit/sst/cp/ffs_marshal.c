@@ -349,7 +349,7 @@ extern void FFSFreeMarshalData(SstStream Stream)
 
         for (int i = 0; i < Info->RecCount; i++)
         {
-            //            free(Info->RecList[i].Type);
+            free(Info->RecList[i].Name);
         }
         if (Info->RecList)
             free(Info->RecList);
@@ -371,6 +371,7 @@ extern void FFSFreeMarshalData(SstStream Stream)
     {
         /* reader side */
         struct FFSReaderMarshalBase *Info = Stream->ReaderMarshalData;
+        SstMarshalMethod Marshaling = Stream->WriterConfigParams->MarshalMethod;
         if (Info)
         {
             for (int i = 0; i < Stream->WriterCohortSize; i++)
@@ -395,10 +396,23 @@ extern void FFSFreeMarshalData(SstStream Stream)
                 free(Info->VarList[i]->VarName);
                 free(Info->VarList[i]->PerWriterMetaFieldOffset);
                 free(Info->VarList[i]->PerWriterDataFieldDesc);
+                if (Marshaling == SstMarshalCP)
+                {
+                    for (int j = 0; j < Stream->WriterCohortSize; j++)
+                    {
+                        if (Info->VarList[i]->PerWriterStart[j])
+                            free(Info->VarList[i]->PerWriterStart[j]);
+                        if (Info->VarList[i]->PerWriterCounts[j])
+                            free(Info->VarList[i]->PerWriterCounts[j]);
+                    }
+                }
                 free(Info->VarList[i]->PerWriterStart);
                 free(Info->VarList[i]->PerWriterCounts);
                 free(Info->VarList[i]->PerWriterIncomingData);
                 free(Info->VarList[i]->PerWriterIncomingSize);
+                if ((Info->VarList[i]->GlobalDims) &&
+                    (Marshaling == SstMarshalCP))
+                    free(Info->VarList[i]->GlobalDims);
                 free(Info->VarList[i]);
             }
             if (Info->VarList)
@@ -681,10 +695,6 @@ extern int SstFFSGetDeferred(SstStream Stream, void *Variable, const char *Name,
         void *IncomingDataBase =
             ((char *)Info->MetadataBaseAddrs[GetFromWriter]) +
             Var->PerWriterMetaFieldOffset[GetFromWriter];
-        printf("FFS get deferred, size %d, Offset %ld, Base %p, value %g\n",
-               Var->ElementSize, Var->PerWriterMetaFieldOffset[GetFromWriter],
-               Info->MetadataBaseAddrs[GetFromWriter],
-               *(double *)IncomingDataBase);
         memcpy(Data, IncomingDataBase, Var->ElementSize);
         return 0; // No Sync needed
     }
@@ -725,10 +735,6 @@ extern int SstFFSGetLocalDeferred(SstStream Stream, void *Variable,
         void *IncomingDataBase =
             ((char *)Info->MetadataBaseAddrs[GetFromWriter]) +
             Var->PerWriterMetaFieldOffset[GetFromWriter];
-        printf("Local get deferred, size %d, Offset %ld, Base %p, value %g\n",
-               Var->ElementSize, Var->PerWriterMetaFieldOffset[GetFromWriter],
-               Info->MetadataBaseAddrs[GetFromWriter],
-               *(double *)IncomingDataBase);
         memcpy(Data, IncomingDataBase, Var->ElementSize);
         return 0; // No Sync needed
     }
@@ -802,8 +808,6 @@ static void IssueReadRequests(SstStream Stream, FFSArrayRequest Reqs)
 
     for (int i = 0; i < Stream->WriterCohortSize; i++)
     {
-        printf("In issue read requests, Writer %d, needed %d\n", i,
-               Info->WriterInfo[i].Status);
         if (Info->WriterInfo[i].Status == Needed)
         {
             size_t DataSize =
@@ -816,8 +820,6 @@ static void IssueReadRequests(SstStream Stream, FFSArrayRequest Reqs)
 
             char tmpstr[256] = {0};
             sprintf(tmpstr, "Request to rank %d, bytes", i);
-            printf("Requesting %ld bytes from rank %d into buffer %p\n",
-                   DataSize, i, Info->WriterInfo[i].RawBuffer);
             TAU_SAMPLE_COUNTER(tmpstr, (double)DataSize);
             Info->WriterInfo[i].ReadHandle = SstReadRemoteMemory(
                 Stream, i, Stream->ReaderTimestep, 0, DataSize,
@@ -1466,8 +1468,6 @@ extern void SstFFSWriterEndStep(SstStream Stream, size_t Timestep)
         Block->FormatIDRep = get_server_ID_FMformat(Format, &size);
         Block->FormatIDRepLen = size;
         Block->Next = NULL;
-        printf("Adding a dataformat with server rep len %ld\n",
-               Block->FormatServerRepLen);
         if (Formats)
         {
             Block->Next = Formats;
@@ -1534,8 +1534,6 @@ extern void SstFFSWriterEndStep(SstStream Stream, size_t Timestep)
         size_t CapnpSize;
         MetaDataRec.block = CapnProtoEncode(Stream, Stream->M, &CapnpSize);
         MetaDataRec.DataSize = CapnpSize;
-        printf("Capn proto block %p, size %ld\n", MetaDataRec.block,
-               MetaDataRec.DataSize);
     }
     else
     {
@@ -1591,6 +1589,10 @@ extern void SstFFSWriterEndStep(SstStream Stream, size_t Timestep)
     SstInternalProvideTimestep(Stream, &MetaDataRec, &DataRec, Timestep,
                                Formats, FreeTSInfo, TSInfo, &AttributeRec,
                                FreeAttrInfo, AttributeEncodeBuffer);
+    if (Stream->ConfigParams->MarshalMethod == SstMarshalCP)
+    {
+        free(MetaDataRec.block);
+    }
     if (AttributeEncodeBuffer)
     {
         free_FFSBuffer(AttributeEncodeBuffer);
@@ -1698,8 +1700,6 @@ static void LoadFormats(SstStream Stream, FFSFormatList Formats)
     {
         char *FormatID = malloc(Entry->FormatIDRepLen);
         char *FormatServerRep = malloc(Entry->FormatServerRepLen);
-        printf("Loading a format with server rep len %ld\n",
-               Entry->FormatServerRepLen);
         memcpy(FormatID, Entry->FormatIDRep, Entry->FormatIDRepLen);
         memcpy(FormatServerRep, Entry->FormatServerRep,
                Entry->FormatServerRepLen);
@@ -1725,6 +1725,9 @@ extern void FFSClearTimestepData(SstStream Stream)
     {
         if (Info->WriterInfo[i].RawBuffer)
             free(Info->WriterInfo[i].RawBuffer);
+        if (Stream->WriterConfigParams->MarshalMethod == SstMarshalCP)
+            if (Info->MetadataBaseAddrs[i])
+                free(Info->MetadataBaseAddrs[i]);
     }
     memset(Info->WriterInfo, 0,
            sizeof(Info->WriterInfo[0]) * Stream->WriterCohortSize);
@@ -1739,10 +1742,8 @@ extern void FFSClearTimestepData(SstStream Stream)
            sizeof(Info->DataBaseAddrs[0]) * Stream->WriterCohortSize);
     memset(Info->DataFieldLists, 0,
            sizeof(Info->DataFieldLists[0]) * Stream->WriterCohortSize);
-    printf("in clear, var count is %d\n", Info->VarCount);
     for (int i = 0; i < Info->VarCount; i++)
     {
-        printf("Clearing Variable %s\n", Info->VarList[i]->VarName);
         Info->VarList[i]->Variable = NULL;
     }
 }
