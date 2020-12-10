@@ -4,11 +4,10 @@
 #include <sys/types.h>
 
 #include "adios2/common/ADIOSConfig.h"
+#include <SSTConfig.h>
 #include <atl.h>
 #include <evpath.h>
 #include <pthread.h>
-
-#include "adios2/common/ADIOSConfig.h"
 
 #include "sst.h"
 
@@ -1402,11 +1401,21 @@ extern SstStatusValue SstFFSPerformGets(SstStream Stream)
     return Ret;
 }
 
+#ifdef SST_HAVE_CAPNPROTO
 extern void *CapnProtoEncode(SstStream Stream, void *MData,
                              size_t *DataSizePtr);
 extern void CapnProtoBuildVarList(SstStream Stream, char *msg, size_t size,
                                   int WriterRank);
-
+#else
+extern void *CapnProtoEncode(SstStream Stream, void *MData, size_t *DataSizePtr)
+{
+    return NULL;
+}
+extern void CapnProtoBuildVarList(SstStream Stream, char *msg, size_t size,
+                                  int WriterRank)
+{
+}
+#endif
 extern void SstFFSWriterEndStep(SstStream Stream, size_t Timestep)
 {
     struct FFSWriterMarshalBase *Info;

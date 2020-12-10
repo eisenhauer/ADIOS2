@@ -6,6 +6,7 @@
 #include <sys/stat.h>
 
 #include "adios2/common/ADIOSConfig.h"
+#include <SSTConfig.h>
 #include <atl.h>
 #include <evpath.h>
 
@@ -155,6 +156,14 @@ void CP_validateParams(SstStream Stream, SstParams Params, int Writer)
     {
         Params->ControlModule = strdup("select");
     }
+#ifndef SST_HAVE_CAPNPROTO
+    if (Params->MarshalMethod == SstMarshalCP)
+    {
+        fprintf(stderr, "CapnProto marshaling unavailable in this build, "
+                        "reverting to FFS marshaling\n");
+        Params->MarshalMethod = SstMarshalFFS;
+    }
+#endif
     if (Params->verbose > Stream->CPVerbosityLevel)
     {
         Stream->CPVerbosityLevel = Params->verbose;
