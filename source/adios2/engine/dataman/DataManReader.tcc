@@ -31,7 +31,7 @@ void DataManReader::GetSyncCommon(Variable<T> &variable, T *data)
 template <class T>
 void DataManReader::GetDeferredCommon(Variable<T> &variable, T *data)
 {
-    if (m_IO.m_ArrayOrder == RowMajor)
+    if (m_IO.m_ArrayOrder == ArrayOrdering::RowMajor)
     {
         while (true)
         {
