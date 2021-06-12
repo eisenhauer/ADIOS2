@@ -342,8 +342,7 @@ void InSituMPIReader::PerformGets()
     // bool writer_IsRowMajor = m_BP3Deserializer.m_IsRowMajor;
     // recalculate seek offsets to payload offset 0 (beginning of blocks)
     int nRequests = insitumpi::FixSeeksToZeroOffset(
-						    m_ReadScheduleMap, (m_IO.m_ArrayOrder == ArrayOrdering::RowMajor));
-
+        m_ReadScheduleMap, (m_IO.m_ArrayOrder == ArrayOrdering::RowMajor));
     if (m_CurrentStep == 0 || !m_ReaderSelectionsLocked)
     {
         // Send schedule to writers
