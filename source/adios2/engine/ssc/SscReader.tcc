@@ -32,7 +32,7 @@ void SscReader::GetDeferredDeltaCommon(Variable<T> &variable, T *data)
     Dims vCount = variable.m_Count;
     Dims vShape = variable.m_Shape;
 
-    if (!helper::IsRowMajor(m_IO.m_HostLanguage))
+    if (m_IO.m_ArrayOrder != ArrayOrdering::RowMajor)
     {
         std::reverse(vStart.begin(), vStart.end());
         std::reverse(vCount.begin(), vCount.end());
@@ -100,7 +100,7 @@ void SscReader::GetDeferredCommon(Variable<T> &variable, T *data)
     Dims vCount = variable.m_Count;
     Dims vShape = variable.m_Shape;
 
-    if (!helper::IsRowMajor(m_IO.m_HostLanguage))
+    if (m_IO.m_ArrayOrder != ArrayOrdering::RowMajor)
     {
         std::reverse(vStart.begin(), vStart.end());
         std::reverse(vCount.begin(), vCount.end());
@@ -182,7 +182,7 @@ SscReader::BlocksInfoCommon(const Variable<T> &variable,
                 b.Step = m_CurrentStep;
                 b.StepsStart = m_CurrentStep;
                 b.StepsCount = 1;
-                if (!helper::IsRowMajor(m_IO.m_HostLanguage))
+                if (m_IO.m_ArrayOrder != ArrayOrdering::RowMajor)
                 {
                     std::reverse(b.Start.begin(), b.Start.end());
                     std::reverse(b.Count.begin(), b.Count.end());
