@@ -37,7 +37,6 @@ adios2::Mode adios2_ToOpenMode(const adios2_mode modeC)
     }
     return mode;
 }
-
 } // end anonymous namespace
 
 #endif
