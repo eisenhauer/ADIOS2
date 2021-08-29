@@ -47,7 +47,6 @@ public:
         char *DestinationAddr;
         void *Internal;
     };
-    void SetupForRandomAccess();
     void InstallMetaMetaData(MetaMetaInfoBlock &MMList);
     void InstallMetaData(void *MetadataBlock, size_t BlockLen,
                          size_t WriterRank, size_t Step = SIZE_MAX);
@@ -68,7 +67,6 @@ public:
     bool m_WriterIsRowMajor = 1;
     bool m_ReaderIsRowMajor = 1;
     core::Engine *m_Engine = NULL;
-    bool m_RandomAccessMode = true;
 
 private:
     size_t m_VarCount = 0;
@@ -119,6 +117,8 @@ private:
 
     FFSContext ReaderFFSContext;
     size_t m_WriterCohortSize;
+    bool m_RandomAccessMode;
+
     std::unordered_map<std::string, BP5VarRec *> VarByName;
     std::unordered_map<void *, BP5VarRec *> VarByKey;
 
