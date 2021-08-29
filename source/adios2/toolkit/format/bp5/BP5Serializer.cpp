@@ -605,50 +605,29 @@ void BP5Serializer::MarshalAttribute(const char *Name, const DataType Type,
     }
     else
     {
-        /* // Array field.  To Metadata, add FMFields for DimCount, Shape, Count
-         */
-        /* // and Offsets matching _MetaArrayRec */
-        /* char *ArrayName = BuildStaticArrayName(Name, Type, ElemCount); */
-        /* AddField(&Info->AttributeFields, &Info->AttributeFieldCount,
-         * ArrayName, Type, */
-        /*          sizeof(size_t)); */
-        /* free(ArrayName); */
-        /* Rec->MetaOffset = */
-        /*     Info->MetaFields[Info->MetaFieldCount - 1].field_offset; */
-        /* char *ShapeName = ConcatName(Name, "Shape"); */
-        /* char *CountName = ConcatName(Name, "Count"); */
-        /* char *OffsetsName = ConcatName(Name, "Offsets"); */
-        /* AddFixedArrayField(&Info->MetaFields, &Info->MetaFieldCount,
-         * ShapeName, */
-        /*                    "integer", sizeof(size_t), DimCount); */
-        /* AddFixedArrayField(&Info->MetaFields, &Info->MetaFieldCount,
-         * CountName, */
-        /*                    "integer", sizeof(size_t), DimCount); */
-        /* AddFixedArrayField(&Info->MetaFields, &Info->MetaFieldCount, */
-        /*                    OffsetsName, "integer", sizeof(size_t), DimCount);
-         */
-        /* free(ShapeName); */
-        /* free(CountName); */
-        /* free(OffsetsName); */
-        /* RecalcMarshalStorageSize(Stream); */
-
-        /* // To Data, add FMFields for ElemCount and Array matching _ArrayRec
-         */
-        /* char *ElemCountName = ConcatName(Name, "ElemCount"); */
-        /* AddField(&Info->DataFields, &Info->DataFieldCount, ElemCountName, */
-        /*          "integer", sizeof(size_t)); */
-        /* Rec->DataOffset = */
-        /*     Info->DataFields[Info->DataFieldCount - 1].field_offset; */
-        /* char *SstName = ConcatName(Name, ""); */
-        /* AddVarArrayField(&Info->DataFields, &Info->DataFieldCount, SstName,
-         */
-        /*                  Type, ElemSize, ElemCountName); */
-        /* free(SstName); */
-        /* free(ElemCountName); */
-        /* RecalcMarshalStorageSize(Stream); */
-        /* // Changing the formats renders these invalid */
-        /* Info->MetaFormat = NULL; */
-        /* Info->DataFormat = NULL; */
+#ifdef NOTDEF
+        // Array field.  To Metadata, add FMFields for DimCount, Shape, Count
+        // and Offsets matching _MetaArrayRec
+        char *ArrayName = BuildArrayDimsName(Name, (int)Type, ElemCount);
+        AddField(&Info.AttributeFields, &Info.AttributeFieldCount, ArrayName,
+                 Type, sizeof(size_t));
+        free(ArrayName);
+        Rec->AttributeOffset =
+            Info.AttributeFields[Info.AttributeFieldCount - 1].field_offset;
+        char *ShapeName = ConcatName(Name, "Shape");
+        char *CountName = ConcatName(Name, "Count");
+        char *OffsetsName = ConcatName(Name, "Offsets");
+        AddFixedArrayField(&Info.AttributeFields, &Info.AttributeFieldCount,
+                           ShapeName, "integer", sizeof(size_t), DimCount);
+        AddFixedArrayField(&Info.AttributeFields, &Info.AttributeFieldCount,
+                           CountName, "integer", sizeof(size_t), DimCount);
+        AddFixedArrayField(&Info.AttributeFields, &Info.AttributeFieldCount,
+                           OffsetsName, "integer", sizeof(size_t), DimCount);
+        free(ShapeName);
+        free(CountName);
+        free(OffsetsName);
+        RecalcAttributeStorageSize(Stream);
+#endif
     }
 }
 

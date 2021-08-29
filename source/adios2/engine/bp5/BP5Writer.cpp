@@ -45,7 +45,13 @@ BP5Writer::BP5Writer(IO &io, const std::string &name, const Mode mode,
 
 StepStatus BP5Writer::BeginStep(StepMode mode, const float timeoutSeconds)
 {
-    m_WriterStep++;
+    if (m_BetweenStepPairs)
+    {
+        throw std::logic_error("ERROR: BeginStep() is called a second time "
+                               "without an intervening EndStep()");
+    }
+
+    m_BetweenStepPairs = true;
     if (m_Parameters.BufferVType == (int)BufferVType::MallocVType)
     {
         m_BP5Serializer.InitStep(new MallocV("BP5Writer", false,
@@ -329,6 +335,7 @@ void BP5Writer::MarshalAttributes()
 
 void BP5Writer::EndStep()
 {
+    m_BetweenStepPairs = false;
     PERFSTUBS_SCOPED_TIMER("BP5Writer::EndStep");
     m_Profiler.Start("endstep");
     MarshalAttributes();
@@ -398,6 +405,7 @@ void BP5Writer::EndStep()
     }
     delete RecvBuffer;
     m_Profiler.Stop("endstep");
+    m_WriterStep++;
 }
 
 // PRIVATE
@@ -875,6 +883,10 @@ void BP5Writer::DoClose(const int transportIndex)
 {
     PERFSTUBS_SCOPED_TIMER("BP5Writer::Close");
 
+    if (m_BetweenStepPairs)
+    {
+        EndStep();
+    }
     m_FileDataManager.CloseFiles(transportIndex);
     // Delete files from temporary storage if draining was on
 

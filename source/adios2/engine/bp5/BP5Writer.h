@@ -66,7 +66,7 @@ private:
 
     transportman::TransportMan m_FileMetaMetadataManager;
 
-    int64_t m_WriterStep = -1;
+    int64_t m_WriterStep = 0;
     /*
      *  Burst buffer variables
      */
@@ -93,6 +93,8 @@ private:
     std::vector<std::string> m_MetadataIndexFileNames;
     std::vector<std::string> m_DrainMetadataIndexFileNames;
     std::vector<std::string> m_ActiveFlagFileNames;
+
+    bool m_BetweenStepPairs = false;
 
     void Init() final;
 

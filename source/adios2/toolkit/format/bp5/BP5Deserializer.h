@@ -34,7 +34,7 @@ class BP5Deserializer : virtual public BP5Base
 
 public:
     BP5Deserializer(int WriterCount, bool WriterIsRowMajor,
-                    bool ReaderIsRowMajor);
+                    bool ReaderIsRowMajor, bool RandomAccessMode = false);
 
     ~BP5Deserializer();
 
@@ -56,6 +56,8 @@ public:
     void SetupForTimestep(size_t t);
     // return from QueueGet is true if a sync is needed to fill the data
     bool QueueGet(core::VariableBase &variable, void *DestData);
+    bool QueueGetSingle(core::VariableBase &variable, void *DestData,
+                        size_t Step);
 
     std::vector<ReadRequest> GenerateReadRequests();
     void FinalizeGets(std::vector<ReadRequest>);
@@ -66,11 +68,13 @@ public:
     bool m_WriterIsRowMajor = 1;
     bool m_ReaderIsRowMajor = 1;
     core::Engine *m_Engine = NULL;
-    bool m_RandomAccessMode = 0;
+    bool m_RandomAccessMode = true;
 
 private:
+    size_t m_VarCount = 0;
     struct BP5VarRec
     {
+        size_t VarNum;
         void *Variable = NULL;
         char *VarName = NULL;
         size_t DimCount = 0;
@@ -80,18 +84,10 @@ private:
         size_t LastTSAdded = SIZE_MAX;
         std::vector<size_t> PerWriterMetaFieldOffset;
         std::vector<size_t> PerWriterBlockStart;
-        std::vector<size_t *> PerWriterDataLocation;
-        BP5VarRec(int WriterSize)
-        {
-            PerWriterMetaFieldOffset.resize(WriterSize);
-            PerWriterBlockStart.resize(WriterSize);
-            PerWriterDataLocation.resize(WriterSize);
-        }
     };
 
     struct ControlStruct
     {
-        int FieldIndex;
         int FieldOffset;
         BP5VarRec *VarRec;
         int IsArray;
@@ -104,6 +100,7 @@ private:
         FMFormat Format;
         int ControlCount;
         struct ControlInfo *Next;
+        std::vector<size_t> *MetaFieldOffset;
         struct ControlStruct Controls[1];
     };
 
@@ -118,7 +115,6 @@ private:
     struct FFSReaderPerWriterRec
     {
         enum WriterDataStatusEnum Status = Empty;
-        char *RawBuffer = NULL;
     };
 
     FFSContext ReaderFFSContext;
@@ -126,9 +122,16 @@ private:
     std::unordered_map<std::string, BP5VarRec *> VarByName;
     std::unordered_map<void *, BP5VarRec *> VarByKey;
 
-    std::vector<void *> MetadataBaseAddrs; // per step
-    std::vector<FFSReaderPerWriterRec> WriterInfo;
-    //  struct ControlInfo *ControlBlocks;
+    std::vector<void *> *m_MetadataBaseAddrs =
+        nullptr; // may be a pointer into MetadataBaseArray or m_FreeableMBA
+    std::vector<void *> *m_FreeableMBA = nullptr;
+
+    // for random access mode, for each timestep, for each writerrank, what
+    // metameta info applies to the metadata
+    std::vector<std::vector<ControlInfo *>> m_ControlArray;
+    // for random access mode, for each timestep, for each writerrank, base
+    // address of the metadata
+    std::vector<std::vector<void *> *> MetadataBaseArray;
 
     ControlInfo *ControlBlocks = nullptr;
     ControlInfo *GetPriorControl(FMFormat Format);
@@ -176,6 +179,7 @@ private:
     {
         BP5VarRec *VarRec = NULL;
         enum RequestTypeEnum RequestType;
+        size_t Step;
         size_t BlockID;
         Dims Start;
         Dims Count;
