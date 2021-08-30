@@ -1935,12 +1935,12 @@ TEST_F(BPWriteReadTestADIOS2, ADIOS2BPWriteReadEmptyProcess)
                 // in first step, rank 0 does not call Put
                 // in second step, it calls with a zero sized array
                 // in third step, it calls with nullptr
-                if (step == 3)
+                if (step == 1)
                 {
                     std::vector<float> zero;
                     bpWriter.Put(var_r32, zero.data());
                 }
-                else if (step == 3)
+                else if (step == 2)
                 {
                     bpWriter.Put(var_r32, (float *)0);
                 }
