@@ -1094,6 +1094,10 @@ static ssize_t PostRead(CP_Services Svcs, Rdma_RS_Stream RS_Stream, int Rank,
     {
         rc = fi_read(Fabric->signal, Buffer, Length, LocalDesc, SrcAddress,
                      (uint64_t)Addr, Info->Key, ret);
+	Svcs->verbose(
+	    RS_Stream->CP_Stream, DPTraceVerbose,
+	    "fi_read(signal %p, addr %p, key %d ret %p) = %d\n", Fabric->signal, Addr, Info->Key, ret, rc);
+	
     } while (rc == -EAGAIN);
 
     if (rc != 0)
@@ -1406,6 +1410,10 @@ static void RdmaProvideTimestep(CP_Services Svcs, DP_WS_Stream Stream_v,
     Entry->DP_TimestepInfo = Info;
     Entry->BufferSlot = -1;
     Entry->Desc = NULL;
+
+    Svcs->verbose(
+        Stream->CP_Stream, DPTraceVerbose,
+        "Enter Provide Tiemstep for TS %ld\n", Timestep);
 
     fi_mr_reg(Fabric->domain, Data->block, Data->DataSize,
               FI_WRITE | FI_REMOTE_READ, 0, 0, 0, &Entry->mr, Fabric->ctx);
@@ -1794,6 +1802,10 @@ static void PushData(CP_Services Svcs, Rdma_WSR_Stream Stream,
     RdmaBuffer Req, ReaderRoll, RollBuffer;
     uint8_t *StepBuffer;
     int i, rc;
+
+    Svcs->verbose(
+        WS_Stream->CP_Stream, DPTraceVerbose,
+        "PushData Timestep %d, BufferSlot %d\n", Step, BufferSlot);
 
     StepBuffer = (uint8_t *)Step->Data->block;
     ReaderRoll = (RdmaBuffer)Stream->ReaderRoll->Handle.Block;
