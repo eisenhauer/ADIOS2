@@ -102,19 +102,19 @@ void ZFPRateCUDA(const std::string rate)
 
         adios2::Engine bpReader = io.Open(fname, adios2::Mode::Read);
 
-        auto var_r32 = io.InquireVariable<float>("r32");
-        EXPECT_TRUE(var_r32);
-        ASSERT_EQ(var_r32.ShapeID(), adios2::ShapeID::GlobalArray);
-        ASSERT_EQ(var_r32.Steps(), NSteps);
-        ASSERT_EQ(var_r32.Shape()[0], NxTotal);
-
-        auto mmR32 = std::minmax_element(r32s.begin(), r32s.end());
-        EXPECT_EQ(var_r32.Min() - INCREMENT, *mmR32.first);
-        EXPECT_EQ(var_r32.Max() - INCREMENT, *mmR32.second);
-
         unsigned int t = 0;
         for (; bpReader.BeginStep() == adios2::StepStatus::OK; ++t)
         {
+            auto var_r32 = io.InquireVariable<float>("r32");
+            EXPECT_TRUE(var_r32);
+            ASSERT_EQ(var_r32.ShapeID(), adios2::ShapeID::GlobalArray);
+            ASSERT_EQ(var_r32.Steps(), NSteps);
+            ASSERT_EQ(var_r32.Shape()[0], NxTotal);
+
+            auto mmR32 = std::minmax_element(r32s.begin(), r32s.end());
+            EXPECT_EQ(var_r32.Min() - INCREMENT, *mmR32.first);
+            EXPECT_EQ(var_r32.Max() - INCREMENT, *mmR32.second);
+
             std::vector<float> r32o(NxTotal);
             bpReader.Get(var_r32, r32o);
             bpReader.EndStep();
