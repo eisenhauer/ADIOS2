@@ -29,8 +29,13 @@
 #define NO_SANITIZE_THREAD
 #endif
 
+#ifdef SST_HAVE_FI_CXI
+#    include <stdbool.h>
+#    include <rdma/fi_cxi_ext.h>
+#endif
 #ifdef SST_HAVE_FI_GNI
 #include <rdma/fi_ext_gni.h>
+#endif /* SST_HAVE_FI_GNI */
 #ifdef SST_HAVE_CRAY_DRC
 #include <rdmacred.h>
 
@@ -38,7 +43,12 @@
 #define DP_DRC_WAIT_USEC 1000000
 
 #endif /* SST_HAVE_CRAY_DRC */
-#endif /* SST_HAVE_FI_GNI */
+
+/* Fallback for undefined CXI values */
+#ifndef NA_OFI_HAS_EXT_CXI_H
+#    define FI_ADDR_CXI  FI_FORMAT_UNSPEC
+#    define FI_PROTO_CXI FI_PROTO_UNSPEC
+#endif
 
 #include "sst_data.h"
 
@@ -74,6 +84,9 @@ struct fabric_state
     uint32_t credential;
     struct fi_gni_auth_key *auth_key;
 #endif /* SST_HAVE_CRAY_DRC */
+#ifdef SST_HAVE_FI_CXI
+    struct cxi_auth_key *cxi_auth_key; /* CXI auth key            */
+#endif
 };
 
 /*
@@ -116,20 +129,20 @@ static void init_fabric(struct fabric_state *fabric, struct _SstParams *Params,
                         CP_Services Svcs, void *CP_Stream)
 {
     struct fi_info *hints, *info, *originfo, *useinfo;
-    struct fi_av_attr av_attr = {FI_AV_UNSPEC};
+    struct fi_av_attr av_attr = {0};//{FI_AV_UNSPEC};
     struct fi_cq_attr cq_attr = {0};
     char *ifname;
     int result;
 
     hints = fi_allocinfo();
     hints->caps = FI_MSG | FI_SEND | FI_RECV | FI_REMOTE_READ |
-                  FI_REMOTE_WRITE | FI_RMA | FI_READ | FI_WRITE;
+	FI_REMOTE_WRITE | FI_READ | FI_WRITE; // | FI_RMA 
     hints->mode = FI_CONTEXT | FI_LOCAL_MR | FI_CONTEXT2 | FI_MSG_PREFIX |
                   FI_ASYNC_IOV | FI_RX_CQ_DATA;
-    hints->domain_attr->mr_mode = FI_MR_BASIC;
-    hints->domain_attr->control_progress = FI_PROGRESS_AUTO;
-    hints->domain_attr->data_progress = FI_PROGRESS_AUTO;
-    hints->ep_attr->type = FI_EP_RDM;
+//    hints->domain_attr->mr_mode = FI_MR_BASIC;
+//    hints->domain_attr->control_progress = FI_PROGRESS_AUTO;
+//    hints->domain_attr->data_progress = FI_PROGRESS_AUTO;
+//    hints->ep_attr->type = FI_EP_RDM;
 
     if (Params->DataInterface)
     {
@@ -169,6 +182,7 @@ static void init_fabric(struct fabric_state *fabric, struct _SstParams *Params,
         }
         if ((((strcmp(prov_name, "verbs") == 0) && info->src_addr) ||
              (strcmp(prov_name, "gni") == 0) ||
+             (strcmp(prov_name, "cxi") == 0) ||
              (strcmp(prov_name, "psm2") == 0)) &&
             (!useinfo || !ifname ||
              (strcmp(useinfo->domain_attr->name, ifname) != 0)))
@@ -180,7 +194,7 @@ static void init_fabric(struct fabric_state *fabric, struct _SstParams *Params,
             useinfo = info;
         }
         else if (((strstr(prov_name, "verbs") && info->src_addr) ||
-                  strstr(prov_name, "gni") || strstr(prov_name, "psm2")) &&
+                  strstr(prov_name, "gni") || strstr(prov_name, "cxi") || strstr(prov_name, "psm2")) &&
                  !useinfo)
         {
             Svcs->verbose(CP_Stream, DPTraceVerbose,
@@ -264,6 +278,13 @@ static void init_fabric(struct fabric_state *fabric, struct _SstParams *Params,
     {
         info->domain_attr->auth_key = (uint8_t *)fabric->auth_key;
         info->domain_attr->auth_key_size = sizeof(struct fi_gni_raw_auth_key);
+    }
+#endif /* SST_HAVE_CRAY_DRC */
+#ifdef SST_HAVE_FI_CXI
+    if (strstr(info->fabric_attr->prov_name, "cxi") && fabric->cxi_auth_key)
+    {
+        info->domain_attr->auth_key = (uint8_t *)fabric->cxi_auth_key;
+        info->domain_attr->auth_key_size = sizeof(struct cxi_auth_key);
     }
 #endif /* SST_HAVE_CRAY_DRC */
     fabric->info = fi_dupinfo(info);
@@ -1710,14 +1731,14 @@ static int RdmaGetPriority(CP_Services Svcs, void *CP_Stream,
     int Ret = -1;
 
     hints = fi_allocinfo();
-    hints->caps = FI_MSG | FI_SEND | FI_RECV | FI_REMOTE_READ |
-                  FI_REMOTE_WRITE | FI_RMA | FI_READ | FI_WRITE;
-    hints->mode = FI_CONTEXT | FI_LOCAL_MR | FI_CONTEXT2 | FI_MSG_PREFIX |
-                  FI_ASYNC_IOV | FI_RX_CQ_DATA;
-    hints->domain_attr->mr_mode = FI_MR_BASIC;
-    hints->domain_attr->control_progress = FI_PROGRESS_AUTO;
-    hints->domain_attr->data_progress = FI_PROGRESS_AUTO;
-    hints->ep_attr->type = FI_EP_RDM;
+//    hints->caps = FI_MSG | FI_SEND | FI_RECV | FI_REMOTE_READ |
+//	FI_REMOTE_WRITE| FI_READ | FI_WRITE; //  | FI_RMA ;
+//    hints->mode = FI_CONTEXT | FI_LOCAL_MR | FI_CONTEXT2 | FI_MSG_PREFIX |
+//                  FI_ASYNC_IOV | FI_RX_CQ_DATA;
+//    hints->domain_attr->mr_mode = FI_MR_BASIC;
+//    hints->domain_attr->control_progress = FI_PROGRESS_AUTO;
+//    hints->domain_attr->data_progress = FI_PROGRESS_AUTO;
+//    hints->ep_attr->type = FI_EP_RDM;
 
     if (Params->DataInterface)
     {
@@ -1751,6 +1772,7 @@ static int RdmaGetPriority(CP_Services Svcs, void *CP_Stream,
     {
         char *prov_name, *domain_name;
 
+	printf("in info, ifname %s\n", ifname);
         prov_name = info->fabric_attr->prov_name;
         domain_name = info->domain_attr->name;
         if (ifname && strcmp(ifname, domain_name) == 0)
@@ -1763,7 +1785,7 @@ static int RdmaGetPriority(CP_Services Svcs, void *CP_Stream,
             break;
         }
         if ((strstr(prov_name, "verbs") && info->src_addr) ||
-            strstr(prov_name, "gni") || strstr(prov_name, "psm2"))
+            strstr(prov_name, "gni") ||  strstr(prov_name, "cxi") || strstr(prov_name, "psm2"))
         {
 
             Svcs->verbose(CP_Stream, DPPerStepVerbose,

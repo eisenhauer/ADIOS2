@@ -23,6 +23,7 @@ if(ADIOS2_SST_HAVE_LIBFABRIC)
   target_link_libraries(sst PRIVATE libfabric::libfabric)
   set(CMAKE_REQUIRED_INCLUDES ${LIBFABRIC_INCLUDE_DIRS})
   CHECK_INCLUDE_FILE(rdma/fi_ext_gni.h ADIOS2_SST_HAVE_FI_GNI)
+  CHECK_INCLUDE_FILES("stddef.h;stdint.h;stdbool.h;rdma/fabric.h;rdma/fi_cxi_ext.h" ADIOS2_SST_HAVE_FI_CXI)
   if(ADIOS2_SST_HAVE_CRAY_DRC)
     target_link_libraries(sst PRIVATE craydrc::craydrc)
   endif()
@@ -52,6 +53,7 @@ set_target_properties(sst PROPERTIES
 set(SST_CONFIG_OPTS
   LIBFABRIC
   FI_GNI
+  FI_CXI
   CRAY_DRC
   NVStream
 )
