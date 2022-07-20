@@ -52,11 +52,11 @@ typedef struct _FFSIndexItem *FFSIndexItem;
 extern FFSContext create_FFSContext_FM(FMContext fmc);
 
 extern FFSBuffer create_FFSBuffer();
-extern FFSBuffer create_fixed_FFSBuffer(char *buffer, int size);
+extern FFSBuffer create_fixed_FFSBuffer(char *buffer, int64_t size);
 extern void free_FFSBuffer(FFSBuffer buf);
 
 extern char *
-FFSencode(FFSBuffer b, FMFormat ioformat, void *data, int *buf_size);
+FFSencode(FFSBuffer b, FMFormat ioformat, void *data, long *buf_size);
 
 typedef struct FFSEncodeVec {
     void *iov_base;
@@ -67,7 +67,7 @@ extern FFSEncodeVector
 FFSencode_vector(FFSBuffer b, FMFormat fmformat, void *data);
 
 extern char *
-FFSencode_no_leaf_copy(FFSBuffer b, FMFormat fmformat, void *data, int *buf_size);
+FFSencode_no_leaf_copy(FFSBuffer b, FMFormat fmformat, void *data, long *buf_size);
 
 extern int FFSdecode_in_place_possible(FFSTypeHandle);
 

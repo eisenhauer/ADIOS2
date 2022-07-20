@@ -42,7 +42,7 @@ char **argv;
     FMContext src_context;
     FFSBuffer buffer;
     char *xfer_buffer;
-    int buf_size;
+    long buf_size;
     int i;
     FMFormat fortran_array_ioformat;
 
