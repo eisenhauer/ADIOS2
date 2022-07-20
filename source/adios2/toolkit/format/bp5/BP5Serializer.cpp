@@ -941,8 +941,8 @@ BP5Serializer::TimestepInfo BP5Serializer::CloseTimestep(int timestep,
     // Encode Metadata and Data to create contiguous data blocks
     FFSBuffer MetaEncodeBuffer = create_FFSBuffer();
     FFSBuffer AttributeEncodeBuffer = NULL;
-    int MetaDataSize = 0;
-    int AttributeSize = 0;
+    long MetaDataSize = 0;
+    long AttributeSize = 0;
     struct BP5MetadataInfoStruct *MBase =
         (struct BP5MetadataInfoStruct *)MetadataBuf;
 

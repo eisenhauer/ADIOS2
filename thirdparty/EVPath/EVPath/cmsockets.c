@@ -1039,19 +1039,19 @@ int iovcnt;
 attr_list attrs;
 {
     int fd = scd->fd;
-    int left = 0;
-    int iget = 0;
-    int iovleft, i;
+    ssize_t left = 0;
+    ssize_t iget = 0;
+    ssize_t iovleft, i;
     iovleft = iovcnt;
     struct iovec * iov = (struct iovec*) iovs;
     /* sum lengths */
     for (i = 0; i < iovcnt; i++)
 	left += iov[i].iov_len;
 
-    svc->trace_out(scd->sd->cm, "CMSocket writev of %d bytes on fd %d",
+    svc->trace_out(scd->sd->cm, "CMSocket writev of %zd bytes on fd %d",
 		   left, fd);
     while (left > 0) {
-	int write_count = iovleft;
+	size_t write_count = iovleft;
 	if (write_count > IOV_MAX)
 	    write_count = IOV_MAX;
 	iget = writev(fd, (struct iovec *) &iov[iovcnt - iovleft],
@@ -1108,9 +1108,9 @@ int iovcnt;
 attr_list attrs;
 {
     int fd = scd->fd;
-    int init_bytes, left = 0;
-    int iget = 0;
-    int iovleft, i;
+    ssize_t init_bytes, left = 0;
+    ssize_t iget = 0;
+    ssize_t iovleft, i;
     struct iovec * iov = (struct iovec*) iovs;
     iovleft = iovcnt;
 
@@ -1120,12 +1120,12 @@ attr_list attrs;
 
     init_bytes = left;
 
-    svc->trace_out(scd->sd->cm, "CMSocket Non-blocking writev of %d bytes on fd %d",
+    svc->trace_out(scd->sd->cm, "CMSocket Non-blocking writev of %zd bytes on fd %d",
 		   left, fd);
     set_block_state(svc, scd, Non_Block);
     while (left > 0) {
-	int write_count = iovleft;
-	int this_write_bytes = 0;
+	ssize_t write_count = iovleft;
+	ssize_t this_write_bytes = 0;
 	if (write_count > IOV_MAX)
 	    write_count = IOV_MAX;
 	for (i = 0; i < write_count; i++)

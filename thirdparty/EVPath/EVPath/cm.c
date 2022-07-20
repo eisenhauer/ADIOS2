@@ -3277,6 +3277,7 @@ INT_CMregister_invalid_message_handler(CManager cm, CMUnregCMHandler handler)
      vec = FFSencode_vector(conn->io_out_buffer, format->fmformat, data);
      while(vec[vec_count].iov_base != NULL) {
 	 length += vec[vec_count].iov_len;
+	 printf("Write length now %zd, having added element %d, which was %zd\n", length, vec_count, vec[vec_count].iov_len);
 	 vec_count++;
      }
      no_attr_header[1] = length;

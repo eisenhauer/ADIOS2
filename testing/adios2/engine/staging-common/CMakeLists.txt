@@ -30,6 +30,8 @@ foreach(helper
     TestCommonServer
     TestCommonClient
     TestDistributionRead
+    TestBigWriter
+    TestBigReader
     )
   add_executable(${helper} ${helper}.cpp)
 
@@ -105,7 +107,7 @@ if(ADIOS2_HAVE_MPI AND MPIEXEC_EXECUTABLE)
    endforeach()
 endif()
 
-set (SIMPLE_TESTS "1x1;1x1DefSync;1x1VarDestruction")
+set (SIMPLE_TESTS "1x1;1x1Big;1x1DefSync;1x1VarDestruction;1x1DontCloseWriter;1x1DontCloseReader")
 set (BP5File_ONLY_TESTS "1x1DataWrite")
 
 set (SIMPLE_FORTRAN_TESTS "")
@@ -122,7 +124,7 @@ endif()
 set (SIMPLE_MPI_TESTS "")
 set (SIMPLE_MPI_FORTRAN_TESTS "")
 if (ADIOS2_HAVE_MPI)
-  set (SIMPLE_MPI_TESTS "2x1;1x2;3x5;5x3;DelayedReader_3x5;3x5LockGeometry;2x1.Local;1x2.Local;3x5.Local;5x3.Local;1x1.LocalVarying;5x3.LocalVarying;2x1ZeroDataVar;2x1ZeroDataR64;2x2.NoData;2x2.HalfNoData;2x1.SharedNothing;2x1.SharedIO;2x1.SharedVar;2x1.SharedNothingSync;2x1.SharedIOSync;2x1.SharedVarSync;3x5EarlyExit")
+  set (SIMPLE_MPI_TESTS "2x1;1x2;3x5;5x3;;DelayedReader_3x5;3x5LockGeometry;2x1.Local;1x2.Local;3x5.Local;5x3.Local;1x1.LocalVarying;5x3.LocalVarying;2x1ZeroDataVar;2x1ZeroDataR64;2x2.NoData;2x2.HalfNoData;2x1.SharedNothing;2x1.SharedIO;2x1.SharedVar;2x1.SharedNothingSync;2x1.SharedIOSync;2x1.SharedVarSync;3x5EarlyExit")
   list (APPEND SPECIAL_TESTS "2x1.NoPreload;2x3.ForcePreload;PreciousTimestep.3x2;PreciousTimestepDiscard.3x2")
   if (ADIOS2_HAVE_Fortran)
     set (SIMPLE_MPI_FORTRAN_TESTS "FtoC.3x5;CtoF.3x5;FtoF.3x5")
@@ -138,7 +140,7 @@ set (ALL_SIMPLE_TESTS "")
 list (APPEND ALL_SIMPLE_TESTS ${SIMPLE_TESTS} ${SIMPLE_FORTRAN_TESTS} ${SIMPLE_MPI_TESTS} ${SIMPLE_ZFP_TESTS})
 
 set (SST_SPECIFIC_TESTS  "")
-list (APPEND SST_SPECIFIC_TESTS  "1x1.SstRUDP;1x1.LocalMultiblock;RoundRobinDistribution.1x1x3;AllToAllDistribution.1x1x3")
+list (APPEND SST_SPECIFIC_TESTS  "1x1.SstRUDP;1x1Big.NoPreload;1x1.LocalMultiblock;RoundRobinDistribution.1x1x3;AllToAllDistribution.1x1x3")
 if (ADIOS2_HAVE_MPI)
   list (APPEND SST_SPECIFIC_TESTS  "2x3.SstRUDP;2x1.LocalMultiblock;5x3.LocalMultiblock;")
 endif()
@@ -196,8 +198,6 @@ if(NOT WIN32)    # not on windows
     list (FILTER BP_TESTS EXCLUDE REGEX ".*NoData$")
     # BP3 and BP4 don't do PerformDataWrite
     list (FILTER BP_TESTS EXCLUDE REGEX ".*DataWrite.*")
-    # BP3 and BP4 don't do VarDestruction
-    list (FILTER BP_TESTS EXCLUDE REGEX ".*VarDestruction.*")
     foreach(test ${BP_TESTS})
         add_common_test(${test} BP4)
     endforeach()
@@ -256,8 +256,6 @@ if(NOT MSVC)    # not on windows
     list (FILTER BP4_STREAM_TESTS EXCLUDE REGEX ".*SharedVar.BPS$")
     # Local fail with BP4_streaming*
     list (FILTER BP4_STREAM_TESTS EXCLUDE REGEX ".*Local.BPS$")
-    # BP3 and BP4 don't do VarDestruction
-    list (FILTER BP4_STREAM_TESTS EXCLUDE REGEX ".*VarDestruction.*")
     # Fortran scalar reads don't work for BP4 streaming
     list (FILTER BP4_STREAM_TESTS EXCLUDE REGEX "(FtoF|CtoF).*")
     # Local Vars have a heisen failure for BP4 streaming
@@ -300,8 +298,6 @@ if(NOT MSVC)    # not on windows
     list (FILTER FILESTREAM_TESTS EXCLUDE REGEX ".*NoReaderNoWait.FS$")
     list (FILTER FILESTREAM_TESTS EXCLUDE REGEX ".*1x1DefSync.*")
     list (FILTER FILESTREAM_TESTS EXCLUDE REGEX ".*Flush.*")
-    # BP3 and BP4 don't do VarDestruction
-    list (FILTER FILESTREAM_TESTS EXCLUDE REGEX ".*VarDestruction.*")
 
     foreach(test ${FILESTREAM_TESTS})
         add_common_test(${test} FileStream)

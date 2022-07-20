@@ -8,6 +8,8 @@
 
 #include <gtest/gtest.h>
 
+std::string Engine;
+
 #if ADIOS2_USE_MPI
 
 TEST(ADIOSInterface, MPICommRemoved)
@@ -291,9 +293,9 @@ public:
         }
         auto io = m_Ad.DeclareIO("CXX11_API_CheckOutput");
 #if ADIOS2_USE_MPI
-        auto engine = io.Open(filename, adios2::Mode::Read, MPI_COMM_SELF);
+        auto engine = io.Open(filename, adios2::Mode::ReadRandomAccess, MPI_COMM_SELF);
 #else
-        auto engine = io.Open(filename, adios2::Mode::Read);
+        auto engine = io.Open(filename, adios2::Mode::ReadRandomAccess);
 #endif
         auto var = io.template InquireVariable<DataType>("var");
         auto shape = var.Shape();
@@ -318,7 +320,7 @@ TYPED_TEST(ADIOS2_CXX11_API_MultiBlock, Put)
 {
     using T = typename TypeParam::DataType;
 
-    std::string filename = "multi_put.bp";
+    std::string filename = "multi_put_" + Engine + ".bp";
     auto writer = this->m_Io.Open(filename, adios2::Mode::Write);
     auto var = this->m_Io.template DefineVariable<T>("var", this->m_Shape);
     MyData<T> myData(this->m_Selections);
@@ -338,8 +340,8 @@ TYPED_TEST(ADIOS2_CXX11_API_MultiBlock, PutMixed)
 {
     using T = typename TestFixture::DataType;
 
-    std::string filename = "multi_putmixed.bp";
-    this->m_Io.SetEngine("BP3");
+    std::string filename = "multi_putmixed_" + Engine + ".bp";
+    this->m_Io.SetEngine(Engine);
     auto writer = this->m_Io.Open(filename, adios2::Mode::Write);
     auto var = this->m_Io.template DefineVariable<T>("var", this->m_Shape);
     MyData<T> myData(this->m_Selections);
@@ -368,8 +370,8 @@ TYPED_TEST(ADIOS2_CXX11_API_MultiBlock, PutZeroCopy)
 {
     using T = typename TestFixture::DataType;
 
-    std::string filename = "multi_putzerocopy.bp";
-    this->m_Io.SetEngine("BP3");
+    std::string filename = "multi_putzerocopy_" + Engine + ".bp";
+    this->m_Io.SetEngine(Engine);
     auto writer = this->m_Io.Open(filename, adios2::Mode::Write);
     auto var = this->m_Io.template DefineVariable<T>("var", this->m_Shape);
     MyDataView<T> myData(this->m_Selections);
@@ -408,8 +410,8 @@ TYPED_TEST(ADIOS2_CXX11_API_MultiBlock, PutZeroCopyMixed)
 {
     using T = typename TestFixture::DataType;
 
-    std::string filename = "multi_putzerocopymixed.bp";
-    this->m_Io.SetEngine("BP3");
+    std::string filename = "multi_putzerocopymixed_" + Engine + ".bp";
+    this->m_Io.SetEngine(Engine);
     auto writer = this->m_Io.Open(filename, adios2::Mode::Write);
     auto var = this->m_Io.template DefineVariable<T>("var", this->m_Shape);
 
@@ -445,16 +447,17 @@ TYPED_TEST(ADIOS2_CXX11_API_MultiBlock, Put2File)
 {
     using T = typename TypeParam::DataType;
 
-    this->GenerateOutput("multi_2f_input.bp", "BP3");
+    this->GenerateOutput("multi_2f_input_" + Engine + ".bp", Engine);
 
-    std::string filename = "multi_put2file.bp";
-    this->m_Io.SetEngine("BP3");
+    std::string filename = "multi_put2file_" + Engine + ".bp";
+    this->m_Io.SetEngine(Engine);
     auto writer = this->m_Io.Open(filename, adios2::Mode::Write);
-    auto reader = this->m_Io.Open("multi_2f_input.bp", adios2::Mode::Read);
+    auto reader = this->m_Io.Open("multi_2f_input_" + Engine + ".bp", adios2::Mode::Read);
     auto var = this->m_Io.template InquireVariable<T>("var");
 
     MyData<T> myData(this->m_Selections);
 
+    std::cout << "Doing *THIS* test" << std::endl;
     for (int b = 0; b < static_cast<int>(myData.NBlocks()); ++b)
     {
         var.SetSelection(myData.Selection(b));
@@ -477,14 +480,15 @@ TYPED_TEST(ADIOS2_CXX11_API_MultiBlock, Put2Writers)
 {
     using T = typename TypeParam::DataType;
 
-    std::string filename = "multi_put2writers.bp";
+    std::string filename = "multi_put2writers_" + Engine + ".bp";
     auto writer = this->m_Io.Open(filename, adios2::Mode::Write);
     auto writer2 =
-        this->m_Io.Open("multi_put2writers2.bp", adios2::Mode::Write);
+        this->m_Io.Open("multi_put2writers2_" + Engine + ".bp", adios2::Mode::Write);
     auto var = this->m_Io.template DefineVariable<T>("var", this->m_Shape);
 
     MyData<T> myData(this->m_Selections);
 
+    std::cout << "Doing *put2writers* test" << std::endl;
     for (int b = 0; b < myData.NBlocks(); ++b)
     {
         this->PopulateBlock(myData, b);
@@ -496,7 +500,7 @@ TYPED_TEST(ADIOS2_CXX11_API_MultiBlock, Put2Writers)
     writer.Close();
 
     this->CheckOutput(filename);
-    this->CheckOutput("multi_put2writers2.bp");
+    this->CheckOutput("multi_put2writers2_" + Engine + ".bp");
 }
 #endif
 
@@ -508,6 +512,12 @@ int main(int argc, char **argv)
 
     int result;
     ::testing::InitGoogleTest(&argc, argv);
+    if (argc <= 1) {
+	Engine = "BPFile";
+    } else {
+	Engine = argv[1];
+    }
+
     result = RUN_ALL_TESTS();
 
 #if ADIOS2_USE_MPI
