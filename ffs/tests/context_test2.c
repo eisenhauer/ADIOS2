@@ -44,7 +44,7 @@ char **argv;
     FMContext src_context;
     FFSBuffer encode_buffer;
     char *xfer_buffer;
-    int buf_size;
+    long buf_size;
     int i;
     struct node nodes[10];
     struct visit_table v;
