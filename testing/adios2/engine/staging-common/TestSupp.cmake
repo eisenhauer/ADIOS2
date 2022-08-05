@@ -64,6 +64,7 @@ set (STAGING_COMMON_TEST_SUPP_VERBOSE OFF)
 
 set (1x1_CMD "run_test.py.$<CONFIG> -nw 1 -nr 1")
 set (1x1Big_CMD "run_test.py.$<CONFIG> -nw 1 -nr 1 -r $<TARGET_FILE:TestBigReader> -w $<TARGET_FILE:TestBigWriter>")
+set (1x1Big_TIMEOUT 300)
 set (1x1GetSync_CMD "run_test.py.$<CONFIG> -nw 1 -nr 1 --rarg=--read_mode --rarg=sync")
 set (1x1DontCloseWriter_CMD "run_test.py.$<CONFIG> -nw 1 -nr 1 --warg=--dont_close")
 set (1x1DontCloseReader_CMD "run_test.py.$<CONFIG> -nw 1 -nr 1 --rarg=--dont_close")

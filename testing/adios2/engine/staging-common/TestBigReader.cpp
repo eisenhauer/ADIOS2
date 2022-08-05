@@ -62,25 +62,18 @@ TEST_F(CommonReadTest, ADIOS2CommonRead1D8)
     std::vector<datatype> streamData;
 
     unsigned currentStep = 0;
-    auto loopbody = [&engine, &streamData, &currentStep](
-                        adios2::Variable<datatype> &variable) {
+
+    while (engine.BeginStep() == adios2::StepStatus::OK)
+    {
+	auto variable = IO.InquireVariable<datatype>("var");
+	if (!variable)
+	{
+		throw std::runtime_error("[Reader] Failed inquiring variable");
+	}
+	streamData.resize(variable.Shape()[0]);
         engine.Get(variable, streamData.data());
         engine.EndStep();
         std::cout << currentStep++ << std::endl;
-    };
-
-    engine.BeginStep();
-    auto variable = IO.InquireVariable<datatype>("var");
-    if (!variable)
-    {
-        throw std::runtime_error("[Reader] Failed inquiring variable");
-    }
-    streamData.resize(variable.Shape()[0]);
-    loopbody(variable);
-    count++;
-    while (engine.BeginStep() == adios2::StepStatus::OK)
-    {
-        loopbody(variable);
 	count++;
     }
     EXPECT_EQ(count, 2);
