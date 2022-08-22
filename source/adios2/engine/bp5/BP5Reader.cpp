@@ -9,9 +9,17 @@
 #include "BP5Reader.h"
 #include "BP5Reader.tcc"
 
+#include "adios2/helper/adiosMath.h" // SetWithinLimit
 #include <adios2-perfstubs-interface.h>
 
+#include <chrono>
 #include <errno.h>
+#include <mutex>
+#include <thread>
+
+using TP = std::chrono::high_resolution_clock::time_point;
+#define NOW() std::chrono::high_resolution_clock::now();
+#define DURATION(T1, T2) static_cast<double>((T2 - T1).count()) / 1000000000.0;
 
 namespace adios2
 {
@@ -28,12 +36,25 @@ BP5Reader::BP5Reader(IO &io, const std::string &name, const Mode mode,
 {
     PERFSTUBS_SCOPED_TIMER("BP5Reader::Open");
     Init();
+    m_IsOpen = true;
 }
 
 BP5Reader::~BP5Reader()
 {
     if (m_BP5Deserializer)
         delete m_BP5Deserializer;
+    if (m_IsOpen)
+    {
+        DestructorClose(m_FailVerbose);
+    }
+    m_IsOpen = false;
+}
+
+void BP5Reader::DestructorClose(bool Verbose) noexcept
+{
+    // Nothing special needs to be done to "close" a BP5 reader during shutdown
+    // if it hasn't already been Closed
+    m_IsOpen = false;
 }
 
 void BP5Reader::InstallMetadataForTimestep(size_t Step)
@@ -181,68 +202,236 @@ void BP5Reader::EndStep()
     PerformGets();
 }
 
-void BP5Reader::ReadData(const size_t WriterRank, const size_t Timestep,
-                         const size_t StartOffset, const size_t Length,
-                         char *Destination)
+std::pair<double, double>
+BP5Reader::ReadData(adios2::transportman::TransportMan &FileManager,
+                    const size_t maxOpenFiles, const size_t WriterRank,
+                    const size_t Timestep, const size_t StartOffset,
+                    const size_t Length, char *Destination)
 {
+    /*
+     * Warning: this function is called by multiple threads
+     */
     size_t FlushCount = m_MetadataIndexTable[Timestep][2];
     size_t DataPosPos = m_MetadataIndexTable[Timestep][3];
     size_t SubfileNum = static_cast<size_t>(
         m_WriterMap[m_WriterMapIndex[Timestep]].RankToSubfile[WriterRank]);
 
     // check if subfile is already opened
-    if (m_DataFileManager.m_Transports.count(SubfileNum) == 0)
+    TP startSubfile = NOW();
+    if (FileManager.m_Transports.count(SubfileNum) == 0)
     {
         const std::string subFileName = GetBPSubStreamName(
             m_Name, SubfileNum, m_Minifooter.HasSubFiles, true);
-
-        m_DataFileManager.OpenFileID(subFileName, SubfileNum, Mode::Read,
-                                     {{"transport", "File"}}, false);
+        if (FileManager.m_Transports.size() >= maxOpenFiles)
+        {
+            auto m = FileManager.m_Transports.begin();
+            FileManager.CloseFiles((int)m->first);
+        }
+        FileManager.OpenFileID(subFileName, SubfileNum, Mode::Read,
+                               {{"transport", "File"}}, false);
     }
+    TP endSubfile = NOW();
+    double timeSubfile = DURATION(startSubfile, endSubfile);
 
+    /* Each block is in exactly one flush. The StartOffset was calculated
+       as if all the flushes were in a single contiguous block in file.
+    */
+    TP startRead = NOW();
     size_t InfoStartPos =
         DataPosPos + (WriterRank * (2 * FlushCount + 1) * sizeof(uint64_t));
-    size_t ThisFlushInfo = InfoStartPos;
-    size_t RemainingLength = Length;
-    size_t ThisDataPos;
-    size_t Offset = StartOffset;
+    size_t SumDataSize = 0; // count in contiguous space
     for (size_t flush = 0; flush < FlushCount; flush++)
     {
-
-        ThisDataPos =
-            helper::ReadValue<uint64_t>(m_MetadataIndex.m_Buffer, ThisFlushInfo,
+        size_t ThisDataPos =
+            helper::ReadValue<uint64_t>(m_MetadataIndex.m_Buffer, InfoStartPos,
                                         m_Minifooter.IsLittleEndian);
         size_t ThisDataSize =
-            helper::ReadValue<uint64_t>(m_MetadataIndex.m_Buffer, ThisFlushInfo,
+            helper::ReadValue<uint64_t>(m_MetadataIndex.m_Buffer, InfoStartPos,
                                         m_Minifooter.IsLittleEndian);
-        if (ThisDataSize > RemainingLength)
-            ThisDataSize = RemainingLength;
-        m_DataFileManager.ReadFile(Destination, ThisDataSize,
-                                   ThisDataPos + Offset, SubfileNum);
-        Destination += ThisDataSize;
-        RemainingLength -= ThisDataSize;
-        Offset = 0;
-        if (RemainingLength == 0)
-            return;
+
+        if (StartOffset < SumDataSize + ThisDataSize)
+        {
+            // discount offsets of skipped flushes
+            size_t Offset = StartOffset - SumDataSize;
+            FileManager.ReadFile(Destination, Length, ThisDataPos + Offset,
+                                 SubfileNum);
+            TP endRead = NOW();
+            double timeRead = DURATION(startRead, endRead);
+            return std::make_pair(timeSubfile, timeRead);
+        }
+        SumDataSize += ThisDataSize;
     }
-    ThisDataPos = helper::ReadValue<uint64_t>(
-        m_MetadataIndex.m_Buffer, ThisFlushInfo, m_Minifooter.IsLittleEndian);
-    m_DataFileManager.ReadFile(Destination, RemainingLength, ThisDataPos,
-                               SubfileNum);
+
+    size_t ThisDataPos = helper::ReadValue<uint64_t>(
+        m_MetadataIndex.m_Buffer, InfoStartPos, m_Minifooter.IsLittleEndian);
+    size_t Offset = StartOffset - SumDataSize;
+    FileManager.ReadFile(Destination, Length, ThisDataPos + Offset, SubfileNum);
+
+    TP endRead = NOW();
+    double timeRead = DURATION(startRead, endRead);
+    return std::make_pair(timeSubfile, timeRead);
 }
 
 void BP5Reader::PerformGets()
 {
+    auto lf_CompareReqSubfile =
+        [&](adios2::format::BP5Deserializer::ReadRequest &r1,
+            adios2::format::BP5Deserializer::ReadRequest &r2) -> bool {
+        return (m_WriterMap[m_WriterMapIndex[r1.Timestep]]
+                    .RankToSubfile[r1.WriterRank] <
+                m_WriterMap[m_WriterMapIndex[r2.Timestep]]
+                    .RankToSubfile[r2.WriterRank]);
+    };
+
+    // TP start = NOW();
     PERFSTUBS_SCOPED_TIMER("BP5Reader::PerformGets");
-    auto ReadRequests = m_BP5Deserializer->GenerateReadRequests();
-    // Potentially optimize read requests, make contiguous, etc.
-    for (const auto &Req : ReadRequests)
+    size_t maxReadSize;
+
+    // TP startGenerate = NOW();
+    auto ReadRequests =
+        m_BP5Deserializer->GenerateReadRequests(false, &maxReadSize);
+    size_t nRequest = ReadRequests.size();
+    // TP endGenerate = NOW();
+    // double generateTime = DURATION(startGenerate, endGenerate);
+
+    size_t nextRequest = 0;
+    std::mutex mutexReadRequests;
+
+    auto lf_GetNextRequest = [&]() -> size_t {
+        std::lock_guard<std::mutex> lockGuard(mutexReadRequests);
+        size_t reqidx = MaxSizeT;
+        if (nextRequest < nRequest)
+        {
+            reqidx = nextRequest;
+            ++nextRequest;
+        }
+        return reqidx;
+    };
+
+    auto lf_Reader = [&](adios2::transportman::TransportMan FileManager,
+                         const size_t maxOpenFiles)
+        -> std::tuple<double, double, double, size_t> {
+        double copyTotal = 0.0;
+        double readTotal = 0.0;
+        double subfileTotal = 0.0;
+        size_t nReads = 0;
+        std::vector<char> buf(maxReadSize);
+
+        while (true)
+        {
+            const auto reqidx = lf_GetNextRequest();
+            if (reqidx > nRequest)
+            {
+                break;
+            }
+            auto &Req = ReadRequests[reqidx];
+            if (!Req.DestinationAddr)
+            {
+                Req.DestinationAddr = buf.data();
+            }
+            std::pair<double, double> t = ReadData(
+                FileManager, maxOpenFiles, Req.WriterRank, Req.Timestep,
+                Req.StartOffset, Req.ReadLength, Req.DestinationAddr);
+
+            TP startCopy = NOW();
+            m_BP5Deserializer->FinalizeGet(Req, false);
+            TP endCopy = NOW();
+            subfileTotal += t.first;
+            readTotal += t.second;
+            copyTotal += DURATION(startCopy, endCopy);
+            ++nReads;
+        }
+        return std::make_tuple(subfileTotal, readTotal, copyTotal, nReads);
+    };
+
+    // TP startRead = NOW();
+    // double sortTime = 0.0;
+    if (m_Threads > 1 && nRequest > 1)
     {
-        ReadData(Req.WriterRank, Req.Timestep, Req.StartOffset, Req.ReadLength,
-                 Req.DestinationAddr);
+        // TP startSort = NOW();
+        std::sort(ReadRequests.begin(), ReadRequests.end(),
+                  lf_CompareReqSubfile);
+        // TP endSort = NOW();
+        // sortTime = DURATION(startSort, endSort);
+        size_t nThreads = (m_Threads < nRequest ? m_Threads : nRequest);
+
+        size_t maxOpenFiles = helper::SetWithinLimit(
+            (size_t)m_Parameters.MaxOpenFilesAtOnce / nThreads, (size_t)1,
+            MaxSizeT);
+
+        std::vector<std::future<std::tuple<double, double, double, size_t>>>
+            futures(nThreads - 1);
+        helper::Comm singleComm;
+        std::vector<transportman::TransportMan> fileManagers(
+            nThreads - 1, transportman::TransportMan(singleComm));
+        // launch Threads-1 threads to process subsets of requests,
+        // then main thread process the last subset
+        for (size_t tid = 0; tid < nThreads - 1; ++tid)
+        {
+            fileManagers[tid];
+            futures[tid] = std::async(std::launch::async, lf_Reader,
+                                      fileManagers[tid], maxOpenFiles);
+        }
+        // main thread runs last subset of reads
+        /*auto tMain = */ lf_Reader(m_DataFileManager, maxOpenFiles);
+        /*{
+            double tSubfile = std::get<0>(tMain);
+            double tRead = std::get<1>(tMain);
+            double tCopy = std::get<2>(tMain);
+            size_t nReads = std::get<3>(tMain);
+            std::cout << " -> PerformGets() thread MAIN total = "
+                      << tSubfile + tRead + tCopy << "s, subfile = " << tSubfile
+                      << "s, read = " << tRead << "s, copy = " << tCopy
+                      << ", nReads = " << nReads << std::endl;
+        }*/
+
+        // wait for all async threads
+        int tid = 1;
+        for (auto &f : futures)
+        {
+            /*auto t = */ f.get();
+            /*double tSubfile = std::get<0>(t);
+            double tRead = std::get<1>(t);
+            double tCopy = std::get<2>(t);
+            size_t nReads = std::get<3>(t);
+            std::cout << " -> PerformGets() thread " << tid
+                      << " total = " << tSubfile + tRead + tCopy
+                      << "s, subfile = " << tSubfile << "s, read = " << tRead
+                      << "s, copy = " << tCopy << ", nReads = " << nReads
+                      << std::endl;*/
+            ++tid;
+        }
+    }
+    else
+    {
+        size_t maxOpenFiles = helper::SetWithinLimit(
+            (size_t)m_Parameters.MaxOpenFilesAtOnce, (size_t)1, MaxSizeT);
+        std::vector<char> buf(maxReadSize);
+        for (auto &Req : ReadRequests)
+        {
+            if (!Req.DestinationAddr)
+            {
+                Req.DestinationAddr = buf.data();
+            }
+            ReadData(m_DataFileManager, maxOpenFiles, Req.WriterRank,
+                     Req.Timestep, Req.StartOffset, Req.ReadLength,
+                     Req.DestinationAddr);
+            m_BP5Deserializer->FinalizeGet(Req, false);
+        }
     }
 
-    m_BP5Deserializer->FinalizeGets(ReadRequests);
+    // clear pending requests inside deserializer
+    {
+        std::vector<adios2::format::BP5Deserializer::ReadRequest> empty;
+        m_BP5Deserializer->FinalizeGets(empty);
+    }
+
+    /*TP end = NOW();
+    double t1 = DURATION(start, end);
+    double t2 = DURATION(startRead, end);
+    std::cout << " -> PerformGets() total = " << t1 << "s, Read loop = " << t2
+              << "s, sort = " << sortTime << "s, generate = " << generateTime
+              << ", nRequests = " << nRequest << std::endl;*/
 }
 
 // PRIVATE
@@ -294,6 +483,24 @@ void BP5Reader::InitParameters()
         else
         {
             m_Parameters.OpenTimeoutSecs = 3600.0f;
+        }
+    }
+
+    m_Threads = m_Parameters.Threads;
+    if (m_Threads == 0)
+    {
+        helper::Comm m_NodeComm =
+            m_Comm.GroupByShm("creating per-node comm at BP5 Open(read)");
+        unsigned int NodeSize = static_cast<unsigned int>(m_NodeComm.Size());
+        unsigned int NodeThreadSize = helper::NumHardwareThreadsPerNode();
+        if (NodeThreadSize > 0)
+        {
+            m_Threads =
+                helper::SetWithinLimit(NodeThreadSize / NodeSize, 1U, 16U);
+        }
+        else
+        {
+            m_Threads = helper::SetWithinLimit(8U / NodeSize, 1U, 8U);
         }
     }
 }
@@ -482,22 +689,6 @@ void BP5Reader::InitTransports()
         defaultTransportParameters["transport"] = "File";
         m_IO.m_TransportsParameters.push_back(defaultTransportParameters);
     }
-}
-
-uint64_t BP5Reader::MetadataExpectedMinFileSize(const std::string &IdxFileName,
-                                                bool hasHeader)
-{
-    size_t cur_idxsize = m_MetadataIndex.m_Buffer.size();
-    static constexpr size_t m_MinIndexRecordSize = 3 * sizeof(uint64_t);
-    if ((hasHeader && cur_idxsize < m_IndexHeaderSize + m_MinIndexRecordSize) ||
-        cur_idxsize < m_MinIndexRecordSize)
-    {
-        // no (new) step entry in the index, so no metadata is expected
-        return 0;
-    }
-    uint64_t lastpos =
-        *(uint64_t *)&(m_MetadataIndex.m_Buffer[cur_idxsize - 24]);
-    return lastpos;
 }
 
 void BP5Reader::InstallMetaMetaData(format::BufferSTL buffer)
@@ -722,6 +913,16 @@ size_t BP5Reader::ParseMetadataIndex(format::BufferSTL &bufferSTL,
 
         // BP minor version, unused
         position = m_BPMinorVersionPosition;
+        const uint8_t minorversion = helper::ReadValue<uint8_t>(
+            buffer, position, m_Minifooter.IsLittleEndian);
+        if (minorversion != m_BP5MinorVersion)
+        {
+            helper::Throw<std::runtime_error>(
+                "Engine", "BP5Reader", "ParseMetadataIndex",
+                "Current ADIOS2 BP5 Engine only supports version 5." +
+                    std::to_string(m_BP5MinorVersion) + ", found 5." +
+                    std::to_string(minorversion) + " version");
+        }
 
         // Writer active flag
         position = m_ActiveFlagPosition;
@@ -751,27 +952,22 @@ size_t BP5Reader::ParseMetadataIndex(format::BufferSTL &bufferSTL,
     m_FilteredMetadataInfo.clear();
     uint64_t minfo_pos = 0;
     uint64_t minfo_size = 0;
-    int n = 0; // a loop counter for current run
+    int n = 0;    // a loop counter for current run4
+    int nrec = 0; // number of records in current run
+
     while (position < buffer.size() &&
            metadataSizeToRead < maxMetadataSizeInMemory)
     {
-        std::vector<uint64_t> ptrs;
-        const uint64_t MetadataPos = helper::ReadValue<uint64_t>(
-            buffer, position, m_Minifooter.IsLittleEndian);
-        const uint64_t MetadataSize = helper::ReadValue<uint64_t>(
-            buffer, position, m_Minifooter.IsLittleEndian);
-        const uint64_t FlushCount = helper::ReadValue<uint64_t>(
-            buffer, position, m_Minifooter.IsLittleEndian);
-        const uint64_t hasWriterMap = helper::ReadValue<uint64_t>(
-            buffer, position, m_Minifooter.IsLittleEndian);
 
-        if (!n)
+        const unsigned char recordID = helper::ReadValue<unsigned char>(
+            buffer, position, m_Minifooter.IsLittleEndian);
+        const uint64_t recordLength = helper::ReadValue<uint64_t>(
+            buffer, position, m_Minifooter.IsLittleEndian);
+        const size_t dbgRecordStartPosition = position;
+
+        switch (recordID)
         {
-            minfo_pos = MetadataPos; // initialize minfo_pos properly
-            MetadataPosTotalSkip = MetadataPos;
-        }
-
-        if (hasWriterMap)
+        case IndexRecord::WriterMapRecord:
         {
             auto p = m_WriterMap.emplace(m_StepsCount, WriterMapStruct());
             auto &s = p.first->second;
@@ -791,65 +987,99 @@ size_t BP5Reader::ParseMetadataIndex(format::BufferSTL &bufferSTL,
             }
             m_LastMapStep = m_StepsCount;
             m_LastWriterCount = s.WriterCount;
+            break;
         }
-
-        if (m_SelectedSteps.IsSelected(m_AbsStepsInFile))
+        case IndexRecord::StepRecord:
         {
-            m_WriterMapIndex.push_back(m_LastMapStep);
+            std::vector<uint64_t> ptrs;
+            const uint64_t MetadataPos = helper::ReadValue<uint64_t>(
+                buffer, position, m_Minifooter.IsLittleEndian);
+            const uint64_t MetadataSize = helper::ReadValue<uint64_t>(
+                buffer, position, m_Minifooter.IsLittleEndian);
+            const uint64_t FlushCount = helper::ReadValue<uint64_t>(
+                buffer, position, m_Minifooter.IsLittleEndian);
 
-            // pos in metadata in memory
-            ptrs.push_back(MetadataPos - MetadataPosTotalSkip);
-            ptrs.push_back(MetadataSize);
-            ptrs.push_back(FlushCount);
-            ptrs.push_back(position);
-            // absolute pos in file before read
-            ptrs.push_back(MetadataPos);
-            m_MetadataIndexTable[m_StepsCount] = ptrs;
-#ifdef DUMPDATALOCINFO
-            for (uint64_t i = 0; i < m_WriterCount; i++)
+            if (!n)
             {
-                size_t DataPosPos = ptrs[3];
-                std::cout << "Writer " << i << " data at ";
-                for (uint64_t j = 0; j < FlushCount; j++)
+                minfo_pos = MetadataPos; // initialize minfo_pos properly
+                MetadataPosTotalSkip = MetadataPos;
+            }
+
+            if (m_SelectedSteps.IsSelected(m_AbsStepsInFile))
+            {
+                m_WriterMapIndex.push_back(m_LastMapStep);
+
+                // pos in metadata in memory
+                ptrs.push_back(MetadataPos - MetadataPosTotalSkip);
+                ptrs.push_back(MetadataSize);
+                ptrs.push_back(FlushCount);
+                ptrs.push_back(position);
+                // absolute pos in file before read
+                ptrs.push_back(MetadataPos);
+                m_MetadataIndexTable[m_StepsCount] = ptrs;
+#ifdef DUMPDATALOCINFO
+                for (uint64_t i = 0; i < m_WriterCount; i++)
                 {
+                    size_t DataPosPos = ptrs[3];
+                    std::cout << "Writer " << i << " data at ";
+                    for (uint64_t j = 0; j < FlushCount; j++)
+                    {
+                        const uint64_t DataPos = helper::ReadValue<uint64_t>(
+                            buffer, DataPosPos, m_Minifooter.IsLittleEndian);
+                        const uint64_t DataSize = helper::ReadValue<uint64_t>(
+                            buffer, DataPosPos, m_Minifooter.IsLittleEndian);
+                        std::cout << "loc:" << DataPos << " siz:" << DataSize
+                                  << "; ";
+                    }
                     const uint64_t DataPos = helper::ReadValue<uint64_t>(
                         buffer, DataPosPos, m_Minifooter.IsLittleEndian);
-                    const uint64_t DataSize = helper::ReadValue<uint64_t>(
-                        buffer, DataPosPos, m_Minifooter.IsLittleEndian);
-                    std::cout << "loc:" << DataPos << " siz:" << DataSize
-                              << "; ";
+                    std::cout << "loc:" << DataPos << std::endl;
                 }
-                const uint64_t DataPos = helper::ReadValue<uint64_t>(
-                    buffer, DataPosPos, m_Minifooter.IsLittleEndian);
-                std::cout << "loc:" << DataPos << std::endl;
-            }
 #endif
-            minfo_size += MetadataSize;
-            metadataSizeToRead += MetadataSize;
-            m_StepsCount++;
-        }
-        else
-        {
-            MetadataPosTotalSkip += MetadataSize;
-            if (minfo_size > 0)
-            {
-                m_FilteredMetadataInfo.push_back(
-                    std::make_pair(minfo_pos, minfo_size));
+                minfo_size += MetadataSize;
+                metadataSizeToRead += MetadataSize;
+                m_StepsCount++;
             }
-            minfo_pos = MetadataPos;
-            minfo_size = 0;
-        }
+            else
+            {
+                MetadataPosTotalSkip += MetadataSize;
+                if (minfo_size > 0)
+                {
+                    m_FilteredMetadataInfo.push_back(
+                        std::make_pair(minfo_pos, minfo_size));
+                }
+                minfo_pos = MetadataPos + MetadataSize;
+                minfo_size = 0;
+            }
 
-        // skip over the writer -> data file offset records
-        position +=
-            sizeof(uint64_t) * m_LastWriterCount * ((2 * FlushCount) + 1);
-        ++m_AbsStepsInFile;
-        ++n;
+            // skip over the writer -> data file offset records
+            position +=
+                sizeof(uint64_t) * m_LastWriterCount * ((2 * FlushCount) + 1);
+            ++m_AbsStepsInFile;
+            ++n;
+            break;
+        }
+        }
+        // dbg
+        if ((position - dbgRecordStartPosition) != (size_t)recordLength)
+        {
+            helper::Throw<std::runtime_error>(
+                "Engine", "BP5Reader", "ParseMetadataIndex",
+                "Record " + std::to_string(nrec) + " (id = " +
+                    std::to_string(recordID) + ") has invalid length " +
+                    std::to_string(recordLength) + ". We parsed " +
+                    std::to_string(position - dbgRecordStartPosition) +
+                    " bytes for this record"
+
+            );
+        }
+        ++nrec;
     }
     if (minfo_size > 0)
     {
         m_FilteredMetadataInfo.push_back(std::make_pair(minfo_pos, minfo_size));
     }
+
     return position;
 }
 
@@ -871,13 +1101,18 @@ bool BP5Reader::ReadActiveFlag(std::vector<char> &buffer)
 
 bool BP5Reader::CheckWriterActive()
 {
-    size_t flag = 0;
+    size_t flag = 1;
     if (m_Comm.Rank() == 0)
     {
-        std::vector<char> header(m_IndexHeaderSize, '\0');
-        m_MDIndexFileManager.ReadFile(header.data(), m_IndexHeaderSize, 0, 0);
-        bool active = ReadActiveFlag(header);
-        flag = (active ? 1 : 0);
+        auto fsize = m_MDIndexFileManager.GetFileSize(0);
+        if (fsize >= m_IndexHeaderSize)
+        {
+            std::vector<char> header(m_IndexHeaderSize, '\0');
+            m_MDIndexFileManager.ReadFile(header.data(), m_IndexHeaderSize, 0,
+                                          0);
+            bool active = ReadActiveFlag(header);
+            flag = (active ? 1 : 0);
+        }
     }
     flag = m_Comm.BroadcastValue(flag, 0);
     m_WriterIsActive = (flag > 0);
@@ -966,6 +1201,14 @@ ADIOS2_FOREACH_STDTYPE_1ARG(declare_type)
 void BP5Reader::DoClose(const int transportIndex)
 {
     PERFSTUBS_SCOPED_TIMER("BP5Reader::Close");
+    if (m_OpenMode == Mode::ReadRandomAccess)
+    {
+        PerformGets();
+    }
+    else if (m_BetweenStepPairs)
+    {
+        EndStep();
+    }
     m_DataFileManager.CloseFiles();
     m_MDFileManager.CloseFiles();
 }

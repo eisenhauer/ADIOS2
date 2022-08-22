@@ -28,7 +28,7 @@
 #include "adios2/core/CoreTypes.h"
 #include "adios2/core/Group.h"
 #include "adios2/core/Variable.h"
-#include "adios2/core/VariableCompound.h"
+#include "adios2/core/VariableStruct.h"
 
 namespace adios2
 {
@@ -182,6 +182,13 @@ public:
                    const Dims &start = Dims(), const Dims &count = Dims(),
                    const bool constantDims = false);
 
+    VariableStruct &DefineStructVariable(const std::string &name,
+                                         StructDefinition &def,
+                                         const Dims &shape = Dims(),
+                                         const Dims &start = Dims(),
+                                         const Dims &count = Dims(),
+                                         const bool constantDims = false);
+
     /**
      * @brief Define array attribute
      * @param name must be unique for the IO object
@@ -272,6 +279,12 @@ public:
      */
     template <class T>
     Variable<T> *InquireVariable(const std::string &name) noexcept;
+
+    VariableStruct *InquireStructVariable(const std::string &name) noexcept;
+
+    VariableStruct *
+    InquireStructVariable(const std::string &name, const StructDefinition &def,
+                          const bool allowReorganize = false) noexcept;
 
     /**
      * @brief Returns the type of an existing variable as an string
@@ -493,6 +506,9 @@ public:
     /** Inform about computation block through User->ADIOS */
     void ExitComputationBlock() noexcept;
 
+    StructDefinition *DefineStruct(const std::string &name, const size_t size);
+    StructDefinition *InquireStruct(const std::string &name);
+
 private:
     /** true: exist in config file (XML) */
     const bool m_InConfigFile = false;
@@ -507,6 +523,10 @@ private:
     AttrMap m_Attributes;
 
     std::map<std::string, std::shared_ptr<Engine>> m_Engines;
+
+    // for reader engines to register temporary struct definitions parsed from
+    // step metadata, and then use them to define variables in IO.
+    std::unordered_map<std::string, StructDefinition> m_StructDefinitions;
 
     /** Checks if attribute exists, called from DefineAttribute different
      *  signatures */

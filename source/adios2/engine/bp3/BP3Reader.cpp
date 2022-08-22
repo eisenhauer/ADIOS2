@@ -28,6 +28,16 @@ BP3Reader::BP3Reader(IO &io, const std::string &name, const Mode mode,
 {
     PERFSTUBS_SCOPED_TIMER("BP3Reader::Open");
     Init();
+    m_IsOpen = true;
+}
+
+BP3Reader::~BP3Reader()
+{
+    if (m_IsOpen)
+    {
+        DestructorClose(m_FailVerbose);
+    }
+    m_IsOpen = false;
 }
 
 StepStatus BP3Reader::BeginStep(StepMode mode, const float timeoutSeconds)
@@ -111,7 +121,7 @@ void BP3Reader::PerformGets()
     {
         const DataType type = m_IO.InquireVariableType(name);
 
-        if (type == DataType::Compound)
+        if (type == DataType::Struct)
         {
         }
 #define declare_type(T)                                                        \
@@ -251,6 +261,7 @@ void BP3Reader::DoClose(const int transportIndex)
 {
     PERFSTUBS_SCOPED_TIMER("BP3Reader::Close");
     PerformGets();
+    RemoveCreatedVars();
     m_SubFileManager.CloseFiles();
     m_FileManager.CloseFiles();
 }

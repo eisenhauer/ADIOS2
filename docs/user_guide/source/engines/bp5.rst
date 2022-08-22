@@ -78,7 +78,7 @@ This engine allows the user to fine tune the buffering operations through the fo
 
    #. **BufferVType**: *chunk* or *malloc*, default is chunking. Chunking maintains the buffer as a list of memory blocks, either ADIOS-owned for sync-ed Puts and small Puts, and user-owned pointers of deferred Puts. Malloc maintains a single memory block and extends it (reallocates) whenever more data is buffered. Chunking incurs extra cost in I/O by having to write data in chunks (multiple write system calls), which can be helped by increasing *BufferChunkSize* and *MinDeferredSize*. Malloc incurs extra cost by reallocating memory whenever more data is buffered (by Put()), which can be helped by increasing *InitialBufferSize*. 
 
-   #. **BufferChunkSize**: (for *chunk* buffer type) The size of each memory buffer chunk, default is 16MB but it is worth increasing up to 2GB if possible for maximum write performance.
+   #. **BufferChunkSize**: (for *chunk* buffer type) The size of each memory buffer chunk, default is 128MB but it is worth increasing up to 2147381248 (a bit less than 2GB) if possible for maximum write performance.
 
    #. **MinDeferredSize**: (for *chunk* buffer type) Small user variables are always buffered, default is 4MB. 
 
@@ -121,12 +121,19 @@ This engine allows the user to fine tune the buffering operations through the fo
 
    #. **DirectIOAlignBuffer**: Alignment for memory pointers. Default is to be same as *DirectIOAlignOffset*. 
 
+#. Miscellaneous
+
+   #. **StatsLevel**: 1 turns on *Min/Max* calculation for every variable, 0 turns this off. Default is 1. It has some cost to generate this metadata so it can be turned off if there is no need for this information.
+
+   #. **MaxOpenFilesAtOnce**: Specify how many subfiles a process can keep open at once. Default is unlimited. If a dataset contains more subfiles than how many open file descriptors the system allows (see *ulimit -n*) then one can either try to raise that system limit (set it with *ulimit -n*), or set this parameter to force the reader to close some subfiles to stay within the limits.
+   
+   #. **Threads**: Read side: Specify how many threads one process can use to speed up reading. The default value is *0*, to let the engine estimate the number of threads based on how many processes are running on the compute node and how many hardware threads are available on the compute node but it will use maximum 16 threads. Value *1* forces the engine to read everything within the main thread of the process. Other values specify the exact number of threads the engine can use. Although multithreaded reading works in a single *Get(adios2::Mode::Sync)* call if the read selection spans multiple data blocks in the file, the best parallelization is achieved by using deferred mode and reading everything in *PerformGets()/EndStep()*.   
 
 ============================== ===================== ===========================================================
  **Key**                       **Value Format**      **Default** and Examples
 ============================== ===================== ===========================================================
  OpenTimeoutSecs                float                 **0** for *ReadRandomAccess* mode, **3600** for *Read* mode, ``10.0``, ``5``
- BeginStepPollingFrequencySecs  float                 **1**, ``10.0`` 
+ BeginStepPollingFrequencySecs  float                 **1**, 10.0 
  AggregationType                string                **TwoLevelShm**, EveryoneWritesSerial, EveryoneWrites
  NumAggregators                 integer >= 1          **0 (one file per compute node)**
  AggregatorRatio                integer >= 1          not used unless set
@@ -134,7 +141,7 @@ This engine allows the user to fine tune the buffering operations through the fo
  StripeSize                     integer+units         **4KB**
  MaxShmSize                     integer+units         **4294762496**
  BufferVType                    string                **chunk**, malloc
- BufferChunkSize                integer+units         **16MB**, worth increasing up to min(2GB, datasize/process/step)
+ BufferChunkSize                integer+units         **128MB**, worth increasing up to min(2GB, datasize/process/step)
  MinDeferredSize                integer+units         **4MB**
  InitialBufferSize              float+units >= 16Kb   **16Kb**, 10Mb, 0.5Gb
  GrowthFactor                   float > 1             **1.05**, 1.01, 1.5, 2
@@ -143,8 +150,11 @@ This engine allows the user to fine tune the buffering operations through the fo
  AsyncOpen                      string On/Off         **On**, Off, true, false
  AsyncWrite                     string On/Off         **Off**, On, true, false
  DirectIO                       string On/Off         **Off**, On, true, false
- DirectIOAlignOffset            integer               **512**
- DirectIOAlignBuffer            integer               set to DirectIOAlignOffset if unset
+ DirectIOAlignOffset            integer >= 0          **512**
+ DirectIOAlignBuffer            integer >= 0          set to DirectIOAlignOffset if unset
+ StatsLevel                     integer, 0 or 1       **1**, 0
+ MaxOpenFilesAtOnce             integer >= 0          **UINT_MAX**, 1024, 1
+ Threads                        integer >= 0          **0**, 1, 32
 ============================== ===================== ===========================================================
 
 
@@ -165,16 +175,3 @@ avaiable on the target system and ADIOS2 needs to be configured with
 flushed to the parallel filesystem at every ``EndStep()`` call. You can
 disable this automatic flush by setting the transport parameter ``SyncToPFS``
 to ``OFF``.
-
-Aggregation in BP5
-------------------
-
-There are two implementations of aggregation in BP5, none of them is the same as the one in BP4. The basic problem of large-scale I/O is that the N-to-1 and N-to-N (process-to-file) patterns do not scale and one must set the number of files in an output to the capability of the file system, not the size of the application. Hence, *N* process needs to write to *M* files to 1) utilize the bandwidth of the file system and to 2) minimize the cost of multiple process writing to a single file. The aggregation setup in ADIOS2 consist of: a) *NumAggregators*, which processes do write to disk (others will send data to them), and b) *NumSubFiles*, how many files they will write. 
-
-**EveryoneWritesSerial** is a simple aggregation strategy. Every process is writing its own data to disk, to one particular file only, and the processes are serialized over each particular file. In this aggregator, *NumAggregators* = *NumSubFiles* (= *M*). This approach should scale well with application size. On Summit's GPFS though we observe that a single writer per compute node is better than multiple process writing to the file system, hence this aggregation method performs poorly there.
-
-**EveryoneWrites** is the same strategy as the previous except that every process immediately writes its own data to its designated file. Since it basically implements an N-to-N write pattern, this method does not scale, so only use it up to a moderate number of processes (1-4 process * number of file system servers). At small scale, as long as the file system can deal with the on-rush of the write requests, this method can provide the fastest I/O. 
-
-**TwoLevelShm** has a subset of processes that actually write to disk (*NumAggregators*). There must be at least one process per compute node, which creates a shared-memory segment for other processes on the node to send their data. The aggregator process basically serializes the writing of data from this subset of processes (itself and the processes that send data to it). The number of files (*NumSubFiles*) can be smaller than *NumAggregators*, and then multiple aggregators will write to one file concurrently. Such a setup may be useful when the number of nodes is many times more than the number of file servers, or when the number of nodes (and hence *NumAggregators*) is not too small to utilize the full I/O bandwidth. TwoLevelShm performs similarly to EveryoneWritesSerial on Lustre, and is the only good option on Summit's GPFS. 
-
-The default method is *TwoLevelShm*, where *NumAggregators* is the number of compute nodes the application is running on, and the number of files is the same. This setup is good for Summit's GPFS and good for Lustre at large scale. However, the default setup leaves potential performance on the table when running applications at smaller scale, where the one process per node setup cannot utilize the full bandwidth of a large parallel file system. 

@@ -13,6 +13,7 @@
 
 #include "Types.h"
 #include "Variable.h"
+#include "VariableNT.h"
 
 #include "adios2/common/ADIOSMacros.h"
 #include "adios2/common/ADIOSTypes.h"
@@ -142,6 +143,9 @@ public:
     void Put(Variable<T> variable, const T *data,
              const Mode launch = Mode::Deferred);
 
+    void Put(VariableNT &variable, const void *data,
+             const Mode launch = Mode::Deferred);
+
     /**
      * Put data associated with a Variable in the Engine
      * Overloaded version that accepts a variable name string.
@@ -174,6 +178,12 @@ public:
     template <class T>
     void Put(Variable<T> variable, const T &datum,
              const Mode launch = Mode::Deferred);
+
+#define declare_type(T)                                                        \
+    void Put(VariableNT &variable, const T &datum,                             \
+             const Mode launch = Mode::Deferred);
+    ADIOS2_FOREACH_STDTYPE_1ARG(declare_type)
+#undef declare_type
 
     /**
      * Put data associated with a Variable in the Engine
@@ -219,6 +229,9 @@ public:
     template <class T>
     void Get(Variable<T> variable, T *data, const Mode launch = Mode::Deferred);
 
+    void Get(VariableNT &variable, void *data,
+             const Mode launch = Mode::Deferred);
+
     /**
      * Get data associated with a Variable from the Engine. Overloaded version
      * to get variable by name.
@@ -254,6 +267,18 @@ public:
     template <class T>
     void Get(Variable<T> variable, T &datum,
              const Mode launch = Mode::Deferred);
+
+#define declare_type(T)                                                        \
+    void Get(VariableNT &variable, T &datum,                                   \
+             const Mode launch = Mode::Deferred);
+    ADIOS2_FOREACH_STDTYPE_1ARG(declare_type)
+#undef declare_type
+
+#define declare_type(T)                                                        \
+    void Get(VariableNT &variable, std::vector<T> &datum,                      \
+             const Mode launch = Mode::Deferred);
+    ADIOS2_FOREACH_STDTYPE_1ARG(declare_type)
+#undef declare_type
 
     /**
      * Get single value data associated with a Variable from the Engine
@@ -377,6 +402,12 @@ public:
     void EndStep();
 
     /**
+     * Returns True if engine status is between BeginStep()/EndStep() pair,
+     * False otherwise.
+     */
+    bool BetweenStepPairs();
+
+    /**
      * Manually flush to underlying transport to guarantee data is moved
      * @param transportIndex
      */
@@ -405,6 +436,9 @@ public:
     std::map<size_t, std::vector<typename Variable<T>::Info>>
     AllStepsBlocksInfo(const Variable<T> variable) const;
 
+    std::map<size_t, std::vector<VariableNT::Info>>
+    AllStepsBlocksInfo(const VariableNT &variable) const;
+
     /**
      * Extracts all available blocks information for a particular
      * variable and step.
@@ -417,6 +451,9 @@ public:
     template <class T>
     std::vector<typename Variable<T>::Info>
     BlocksInfo(const Variable<T> variable, const size_t step) const;
+
+    std::vector<VariableNT::Info> BlocksInfo(const VariableNT &variable,
+                                             const size_t step) const;
 
     /**
      * Get the absolute steps of a variable in a file. This is for
@@ -457,48 +494,6 @@ private:
     Engine(core::Engine *engine);
     core::Engine *m_Engine = nullptr;
 };
-
-#define declare_template_instantiation(T)                                      \
-                                                                               \
-    extern template typename Variable<T>::Span Engine::Put(                    \
-        Variable<T>, const bool, const T &);                                   \
-    extern template typename Variable<T>::Span Engine::Put(Variable<T>);       \
-    extern template void Engine::Get(Variable<T>, T **) const;
-
-ADIOS2_FOREACH_PRIMITIVE_TYPE_1ARG(declare_template_instantiation)
-#undef declare_template_instantiation
-
-#define declare_template_instantiation(T)                                      \
-    extern template void Engine::Put<T>(Variable<T>, const T *, const Mode);   \
-    extern template void Engine::Put<T>(const std::string &, const T *,        \
-                                        const Mode);                           \
-    extern template void Engine::Put<T>(Variable<T>, const T &, const Mode);   \
-    extern template void Engine::Put<T>(const std::string &, const T &,        \
-                                        const Mode);                           \
-                                                                               \
-    extern template void Engine::Get<T>(Variable<T>, T *, const Mode);         \
-    extern template void Engine::Get<T>(const std::string &, T *, const Mode); \
-    extern template void Engine::Get<T>(Variable<T>, T &, const Mode);         \
-    extern template void Engine::Get<T>(const std::string &, T &, const Mode); \
-                                                                               \
-    extern template void Engine::Get<T>(Variable<T>, std::vector<T> &,         \
-                                        const Mode);                           \
-    extern template void Engine::Get<T>(const std::string &, std::vector<T> &, \
-                                        const Mode);                           \
-                                                                               \
-    extern template void Engine::Get<T>(                                       \
-        Variable<T>, typename Variable<T>::Info & info, const Mode);           \
-    extern template void Engine::Get<T>(                                       \
-        const std::string &, typename Variable<T>::Info &info, const Mode);    \
-                                                                               \
-    extern template std::map<size_t, std::vector<typename Variable<T>::Info>>  \
-    Engine::AllStepsBlocksInfo(const Variable<T> variable) const;              \
-                                                                               \
-    extern template std::vector<typename Variable<T>::Info>                    \
-    Engine::BlocksInfo(const Variable<T> variable, const size_t step) const;
-
-ADIOS2_FOREACH_TYPE_1ARG(declare_template_instantiation)
-#undef declare_template_instantiation
 
 std::string ToString(const Engine &engine);
 

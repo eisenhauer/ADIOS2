@@ -32,12 +32,12 @@
 namespace adios2
 {
 
-/** Memory space for the buffers received with Put */
+/** Memory space for the user provided buffers */
 enum class MemorySpace
 {
     Detect, ///< Detect the memory space automatically
     Host,   ///< Host memory space (default)
-    CUDA    ///< GPU memory spaces
+    CUDA    ///< CUDA memory spaces
 };
 
 /** Variable shape type identifier, assigned automatically from the signature of
@@ -147,7 +147,7 @@ enum class DataType
     DoubleComplex,
     String,
     Char,
-    Compound
+    Struct
 };
 
 /** Type of ArrayOrdering */
@@ -215,7 +215,7 @@ struct MinBlockInfo
 struct MinVarInfo
 {
     size_t Step;
-    bool WasLocalVar;
+    bool WasLocalValue; // writer: localValue -> reader: 1D global array
     int Dims;
     size_t *Shape;
     bool IsValue = false;
@@ -248,8 +248,8 @@ constexpr uint64_t DefaultMaxBufferSize = MaxSizeT - 1;
 constexpr float DefaultBufferGrowthFactor = 1.05f;
 
 /** default Buffer Chunk Size
- *  16Mb */
-constexpr uint64_t DefaultBufferChunkSize = 16 * 1024 * 1024;
+ *  128Mb */
+constexpr uint64_t DefaultBufferChunkSize = 128 * 1024 * 1024;
 
 /** default minimum size not copying deferred writes
  *  4Mb */

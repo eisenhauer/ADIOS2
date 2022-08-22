@@ -67,12 +67,6 @@ namespace core
     }                                                                          \
                                                                                \
     template <>                                                                \
-    Dims Variable<T>::Shape(const size_t step) const                           \
-    {                                                                          \
-        return DoShape(step);                                                  \
-    }                                                                          \
-                                                                               \
-    template <>                                                                \
     Dims Variable<T>::Count() const                                            \
     {                                                                          \
         return DoCount();                                                      \
@@ -110,10 +104,6 @@ namespace core
     }
 
 ADIOS2_FOREACH_STDTYPE_1ARG(declare_type)
-#undef declare_type
-
-#define declare_template_instantiation(T) template class Span<T>;
-ADIOS2_FOREACH_PRIMITIVE_STDTYPE_1ARG(declare_template_instantiation)
 #undef declare_type
 
 } // end namespace core

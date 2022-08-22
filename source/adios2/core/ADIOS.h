@@ -22,6 +22,7 @@
 #include "adios2/common/ADIOSTypes.h"
 #include "adios2/core/CoreTypes.h"
 #include "adios2/core/Operator.h"
+#include "adios2/core/VariableStruct.h"
 #include "adios2/helper/adiosComm.h"
 
 namespace adios2
@@ -131,6 +132,11 @@ public:
     std::pair<std::string, Params> *
     InquireOperator(const std::string &name) noexcept;
 
+    StructDefinition &DefineStruct(const std::string &name, const size_t size);
+    StructDefinition *InquireStruct(const std::string &name);
+    const std::unordered_map<std::string, StructDefinition> &
+    StructDefinitions() const;
+
     /**
      * DANGER ZONE: removes a particular IO. This will effectively eliminate any
      * parameter from the config.xml file
@@ -174,6 +180,8 @@ private:
 
     /** operators created with DefineOperator */
     std::unordered_map<std::string, std::pair<std::string, Params>> m_Operators;
+
+    std::unordered_map<std::string, StructDefinition> m_StructDefinitions;
 
     /** Flag for Enter/ExitComputationBlock */
     bool enteredComputationBlock = false;

@@ -2,7 +2,7 @@
  * Distributed under the OSI-approved Apache License, Version 2.0.  See
  * accompanying file Copyright.txt for details.
  *
- * Sst.cpp
+ * SstWriter.cpp
  *
  *  Created on: Aug 17, 2017
  *      Author: Greg Eisenhauer
@@ -117,9 +117,17 @@ SstWriter::SstWriter(IO &io, const std::string &name, const Mode mode,
         SstWriterInitMetadataCallback(m_Output, this, AssembleMetadata,
                                       FreeAssembledMetadata);
     }
+    m_IsOpen = true;
 }
 
-SstWriter::~SstWriter() { SstStreamDestroy(m_Output); }
+SstWriter::~SstWriter()
+{
+    if (m_IsOpen)
+    {
+        DestructorClose(m_FailVerbose);
+    }
+    SstStreamDestroy(m_Output);
+}
 
 StepStatus SstWriter::BeginStep(StepMode mode, const float timeout_sec)
 {
@@ -179,10 +187,16 @@ void SstWriter::MarshalAttributes()
     PERFSTUBS_SCOPED_TIMER_FUNC();
     const auto &attributes = m_IO.GetAttributes();
 
-    const uint32_t attributesCount = static_cast<uint32_t>(attributes.size());
+    if ((m_WriterStep == 0) && Params.UseOneTimeAttributes)
+    {
+        for (const auto &attributePair : attributes)
+        {
+            m_BP5Serializer->OnetimeMarshalAttribute(*(attributePair.second));
+        }
+    }
 
     // if there are no new attributes, nothing to do
-    if (attributesCount == m_MarshaledAttributesCount)
+    if (!m_MarshalAttributesNecessary)
         return;
 
     for (const auto &attributePair : attributes)
@@ -237,7 +251,27 @@ void SstWriter::MarshalAttributes()
         ADIOS2_FOREACH_ATTRIBUTE_PRIMITIVE_STDTYPE_1ARG(declare_type)
 #undef declare_type
     }
-    m_MarshaledAttributesCount = attributesCount;
+    m_MarshalAttributesNecessary = false;
+}
+
+void SstWriter::NotifyEngineAttribute(std::string name, DataType type) noexcept
+{
+    helper::Throw<std::invalid_argument>(
+        "SstWriter", "Engine", "ThrowUp",
+        "Engine does not support NotifyEngineAttribute");
+}
+
+void SstWriter::NotifyEngineAttribute(std::string name, AttributeBase *Attr,
+                                      void *data) noexcept
+{
+    if (!Params.UseOneTimeAttributes)
+    {
+        m_MarshalAttributesNecessary = true;
+        return;
+    }
+
+    m_BP5Serializer->OnetimeMarshalAttribute(*Attr);
+    m_MarshalAttributesNecessary = false;
 }
 
 void SstWriter::EndStep()
@@ -402,6 +436,24 @@ ADIOS2_FOREACH_STDTYPE_1ARG(declare_type)
 #undef declare_type
 
 void SstWriter::DoClose(const int transportIndex) { SstWriterClose(m_Output); }
+
+/**
+ * Called if destructor is called on an open engine.  Should warn or take any
+ * non-complex measure that might help recover.
+ */
+void SstWriter::DestructorClose(bool Verbose) noexcept
+{
+    if (Verbose)
+    {
+        std::cerr << "SST Writer \"" << m_Name
+                  << "\" Destroyed without a prior Close()." << std::endl;
+        std::cerr << "This may result in loss of data and/or disconnect "
+                     "warnings for a connected SST Reader."
+                  << std::endl;
+    }
+    m_IsOpen = false;
+    // should at least call control plane to remove contact file
+}
 
 } // end namespace engine
 } // end namespace core

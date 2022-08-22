@@ -13,6 +13,8 @@
 
 #include "adios2/helper/adiosFunctions.h"
 
+#include "adios2/toolkit/format/bp/bpBackCompatOperation/compress/BPBackCompatBlosc.h"
+
 namespace adios2
 {
 namespace format
@@ -444,7 +446,7 @@ std::string BPBase::ReadBPString(const std::vector<char> &buffer,
 // static members
 const std::set<std::string> BPBase::m_TransformTypes = {
     {"unknown", "none", "identity", "bzip2", "sz", "zfp", "mgard", "png",
-     "blosc", "sirius", "mgardplus"}};
+     "blosc", "sirius", "mgardplus", "plugin"}};
 
 const std::map<int, std::string> BPBase::m_TransformTypesToNames = {
     {transform_unknown, "unknown"},
@@ -457,7 +459,8 @@ const std::map<int, std::string> BPBase::m_TransformTypesToNames = {
     {transform_bzip2, "bzip2"},
     {transform_blosc, "blosc"},
     {transform_sirius, "sirius"},
-    {transform_mgardplus, "mgardplus"}};
+    {transform_mgardplus, "mgardplus"},
+    {transform_plugin, "plugin"}};
 
 BPBase::TransformTypes
 BPBase::TransformTypeEnum(const std::string transformType) const noexcept
@@ -485,6 +488,17 @@ ADIOS2_FOREACH_STDTYPE_1ARG(declare_template_instantiation)
 #undef declare_template_instantiation
 
 size_t BPBase::DebugGetDataBufferSize() const { return m_Data.DebugGetSize(); }
+
+std::shared_ptr<BPBackCompatOperation>
+BPBase::SetBPBackCompatOperation(const std::string type) const noexcept
+{
+    std::shared_ptr<BPBackCompatOperation> bpOp;
+    if (type == "blosc")
+    {
+        bpOp = std::make_shared<BPBackCompatBlosc>();
+    }
+    return bpOp;
+}
 
 } // end namespace format
 } // end namespace adios2

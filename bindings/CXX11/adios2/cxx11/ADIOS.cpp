@@ -10,21 +10,19 @@
 
 #include "adios2/core/ADIOS.h"
 #include "adios2/core/IO.h"
+#include "adios2/core/VariableStruct.h"
 #include "adios2/helper/adiosFunctions.h" //CheckForNullptr
 
 namespace adios2
 {
-ADIOS::ADIOS(const std::string &configFile, const bool debugMode)
+ADIOS::ADIOS(const std::string &configFile)
 : m_ADIOS(std::make_shared<core::ADIOS>(configFile, "C++"))
 {
 }
 
-ADIOS::ADIOS(const char *configFile) : ADIOS(std::string(configFile), "C++") {}
+ADIOS::ADIOS() : ADIOS("", "C++") {}
 
-ADIOS::ADIOS(const bool debugMode) : ADIOS("", "C++") {}
-
-ADIOS::ADIOS(const std::string &configFile, const std::string &hostLanguage,
-             const bool debugMode)
+ADIOS::ADIOS(const std::string &configFile, const std::string &hostLanguage)
 : m_ADIOS(std::make_shared<core::ADIOS>(configFile, hostLanguage))
 {
 }
@@ -82,6 +80,20 @@ Operator ADIOS::InquireOperator(const std::string name)
     {
         return Operator(op->first, &op->second);
     }
+}
+
+StructDefinition ADIOS::DefineStruct(const std::string &name, const size_t size)
+{
+    CheckPointer("for struct name " + name +
+                 ", in call to ADIOS::DefineStruct");
+    return StructDefinition(&m_ADIOS->DefineStruct(name, size));
+}
+
+StructDefinition ADIOS::InquireStruct(const std::string &name)
+{
+    CheckPointer("for struct name " + name +
+                 ", in call to ADIOS::InquireStruct");
+    return StructDefinition(m_ADIOS->InquireStruct(name));
 }
 
 bool ADIOS::RemoveIO(const std::string name)

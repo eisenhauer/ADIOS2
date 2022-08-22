@@ -528,7 +528,17 @@ void BP3Deserializer::PostDataRead(
         char *preOpData = m_ThreadBuffers[threadID][0].data();
         const char *postOpData = m_ThreadBuffers[threadID][1].data();
 
-        core::Decompress(postOpData, blockOperationInfo.PayloadSize, preOpData);
+        std::shared_ptr<core::Operator> op = nullptr;
+        for (auto &o : blockInfo.Operations)
+        {
+            if (o->m_Category == "compress" || o->m_Category == "plugin")
+            {
+                op = o;
+                break;
+            }
+        }
+        core::Decompress(postOpData, blockOperationInfo.PayloadSize, preOpData,
+                         op);
 
         // clip block to match selection
         helper::ClipVector(m_ThreadBuffers[threadID][0],
@@ -567,11 +577,13 @@ void BP3Deserializer::PostDataRead(
                 "MemorySelection");
         }
 
-        auto intersectStart = subStreamBoxInfo.IntersectionBox.first;
-        auto intersectCount = subStreamBoxInfo.IntersectionBox.second;
-        auto blockStart = subStreamBoxInfo.BlockBox.first;
-        auto blockCount = subStreamBoxInfo.BlockBox.second;
-        auto memoryStart = blockInfoStart;
+        helper::DimsArray intersectStart(
+            subStreamBoxInfo.IntersectionBox.first);
+        helper::DimsArray intersectCount(
+            subStreamBoxInfo.IntersectionBox.second);
+        helper::DimsArray blockStart(subStreamBoxInfo.BlockBox.first);
+        helper::DimsArray blockCount(subStreamBoxInfo.BlockBox.second);
+        helper::DimsArray memoryStart(blockInfoStart);
         for (size_t d = 0; d < intersectStart.size(); d++)
         {
             // change {intersect,block}Count from [start, end] to {start, count}
@@ -585,7 +597,8 @@ void BP3Deserializer::PostDataRead(
                        intersectCount, true, true,
                        reinterpret_cast<char *>(blockInfo.Data), intersectStart,
                        intersectCount, true, true, sizeof(T), intersectStart,
-                       blockCount, memoryStart, blockInfo.MemoryCount, false);
+                       blockCount, memoryStart,
+                       helper::DimsArray(blockInfo.MemoryCount), false);
     }
     else
     {
@@ -682,6 +695,7 @@ inline void BP3Deserializer::DefineVariableInEngineIO<std::string>(
     {
         std::lock_guard<std::mutex> lock(m_Mutex);
         variable = &engine.m_IO.DefineVariable<std::string>(variableName);
+        engine.RegisterCreatedVariable(variable);
         variable->m_Value =
             characteristics.Statistics.Value; // assigning first step
 
@@ -833,6 +847,8 @@ void BP3Deserializer::DefineVariableInEngineIO(const ElementIndexHeader &header,
                     variableName + ", in call to Open");
         } // end switch
 
+        engine.RegisterCreatedVariable(variable);
+
         if (characteristics.Statistics.IsValue)
         {
             variable->m_Value = characteristics.Statistics.Value;
@@ -962,14 +978,14 @@ void BP3Deserializer::DefineAttributeInEngineIO(
 
     if (characteristics.Statistics.IsValue)
     {
-        engine.m_IO.DefineAttribute<T>(attributeName,
-                                       characteristics.Statistics.Value);
+        engine.m_IO.DefineAttribute<T>(
+            attributeName, characteristics.Statistics.Value, "", "/", true);
     }
     else
     {
         engine.m_IO.DefineAttribute<T>(
             attributeName, characteristics.Statistics.Values.data(),
-            characteristics.Statistics.Values.size());
+            characteristics.Statistics.Values.size(), "", "/", true);
     }
 }
 

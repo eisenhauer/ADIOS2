@@ -34,6 +34,16 @@ BP4Reader::BP4Reader(IO &io, const std::string &name, const Mode mode,
     helper::Log("Engine", "BP4Reader", "Open", m_Name, 0, m_Comm.Rank(), 5,
                 m_Verbosity, helper::LogMode::INFO);
     Init();
+    m_IsOpen = true;
+}
+
+BP4Reader::~BP4Reader()
+{
+    if (m_IsOpen)
+    {
+        DestructorClose(m_FailVerbose);
+    }
+    m_IsOpen = false;
 }
 
 StepStatus BP4Reader::BeginStep(StepMode mode, const float timeoutSeconds)
@@ -145,7 +155,7 @@ void BP4Reader::PerformGets()
     {
         const DataType type = m_IO.InquireVariableType(name);
 
-        if (type == DataType::Compound)
+        if (type == DataType::Struct)
         {
         }
 #define declare_type(T)                                                        \
@@ -655,9 +665,8 @@ size_t BP4Reader::UpdateBuffer(const TimePoint &timeoutInstant,
 }
 void BP4Reader::ProcessMetadataForNewSteps(const size_t newIdxSize)
 {
-    /* Remove all existing variables from previous steps
-       It seems easier than trying to update them */
-    m_IO.RemoveAllVariables();
+    /* Remove all variables we created in the last step */
+    RemoveCreatedVars();
 
     /* Parse metadata index table (without header) */
     /* We need to skew the index table pointers with the
@@ -809,6 +818,9 @@ void BP4Reader::DoClose(const int transportIndex)
     helper::Log("Engine", "BP4Reader", "Close", m_Name, 0, m_Comm.Rank(), 5,
                 m_Verbosity, helper::LogMode::INFO);
     PerformGets();
+    /* Remove all variables we created in the last step */
+    RemoveCreatedVars();
+
     m_DataFileManager.CloseFiles();
     m_MDFileManager.CloseFiles();
 }

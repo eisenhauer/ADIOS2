@@ -233,13 +233,14 @@ private:
     format::BufferSTL m_MetadataIndex;
     format::BufferSTL m_MetaMetadata;
     format::BufferSTL m_Metadata;
-    uint64_t MetadataExpectedMinFileSize(const std::string &IdxFileName,
-                                         bool hasHeader);
+
     void InstallMetaMetaData(format::BufferSTL MetaMetadata);
     void InstallMetadataForTimestep(size_t Step);
-    void ReadData(const size_t WriterRank, const size_t Timestep,
-                  const size_t StartOffset, const size_t Length,
-                  char *Destination);
+    std::pair<double, double>
+    ReadData(adios2::transportman::TransportMan &FileManager,
+             const size_t maxOpenFiles, const size_t WriterRank,
+             const size_t Timestep, const size_t StartOffset,
+             const size_t Length, char *Destination);
 
     struct WriterMapStruct
     {
@@ -253,6 +254,13 @@ private:
     std::map<uint64_t, WriterMapStruct> m_WriterMap;
     // step -> writermap index (for all steps)
     std::vector<uint64_t> m_WriterMapIndex;
+
+    void DestructorClose(bool Verbose) noexcept;
+
+    /* Communicator connecting ranks on each Compute Node.
+       Only used to calculate the number of threads available for reading */
+    helper::Comm m_NodeComm;
+    unsigned int m_Threads;
 };
 
 } // end namespace engine

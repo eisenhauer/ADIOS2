@@ -27,10 +27,19 @@ Funded by the `Exascale Computing Project (ECP) <https://www.exascaleproject.org
    components/components
    engines/virtual_engines
    engines/engines
+   operators/operators
    api_full/api_full
    api_high/api_high
 
-
+.. toctree::
+   :caption: Advanced Topics
+   
+   advanced/aggregation
+   advanced/memory_management
+   advanced/gpu_aware
+   advanced/plugins
+   advanced/ecp_hardware
+   
 .. toctree::
    :caption: Ecosystem Tools
 

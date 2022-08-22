@@ -81,7 +81,7 @@ ADIOS2 Fortran bindings handlers are mapped 1-to-1 to the ADIOS2 components desc
    Changing their values directly, *e.g.* ``variable%name = new_name`` does not have any effect inside the ADIOS2 library 
    
 
-:ref:`ADIOS2` subroutines
+:ref:`ADIOS` subroutines
 ------------------------
 
 * :f90:`subroutine adios2_init` starting point for the ADIOS2 library 
@@ -115,10 +115,6 @@ ADIOS2 Fortran bindings handlers are mapped 1-to-1 to the ADIOS2 components desc
       ! Optional runtime configuration file (*.xml), see Runtime Configuration Files
       character*(*), intent(in) :: config_file
       
-      ! .true. (adios2_debug_mode_on): enable extra user input checks-> recommended
-      ! .false. (adios2_debug_mode_of): disable extra user input checks
-      logical, intent(in):: adios2_debug_mode
-
       ! error code
       integer, intent(out) :: ierr
       

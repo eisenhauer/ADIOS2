@@ -44,7 +44,7 @@ public:
     BP5Writer(IO &io, const std::string &name, const Mode mode,
               helper::Comm comm);
 
-    ~BP5Writer() = default;
+    ~BP5Writer();
 
     StepStatus BeginStep(StepMode mode,
                          const float timeoutSeconds = -1.0) final;
@@ -115,6 +115,8 @@ private:
     /** Notify the engine when a new attribute is defined or modified. Called
      * from IO.tcc
      */
+    void NotifyEngineAttribute(std::string name, AttributeBase *Attr,
+                               void *data) noexcept;
 
     void EnterComputationBlock() noexcept;
     /** Inform about computation block through User->ADIOS->IO */
@@ -196,9 +198,12 @@ private:
     bool m_IAmDraining = false;
     bool m_IAmWritingData = false;
     helper::Comm *DataWritingComm; // processes that write the same data file
-    bool m_IAmWritingDataHeader = false;
-
+    // aggregators only (valid if m_Aggregator->m_Comm.Rank() == 0)
+    helper::Comm m_CommAggregators;
     adios2::profiling::JSONProfiler m_Profiler;
+
+protected:
+    virtual void DestructorClose(bool Verbose) noexcept;
 
 private:
     // updated during WriteMetaData
@@ -227,13 +232,10 @@ private:
 
     bool m_MarshalAttributesNecessary = true;
 
-    // where each writer rank writes its data, init in InitBPBuffer;
-    std::vector<uint64_t> m_Assignment;
-
     std::vector<std::vector<size_t>> FlushPosSizeInfo;
 
-    void MakeHeader(format::BufferSTL &b, const std::string fileType,
-                    const bool isActive);
+    void MakeHeader(std::vector<char> &buffer, size_t &position,
+                    const std::string fileType, const bool isActive);
 
     std::vector<uint64_t> m_WriterSubfileMap; // rank => subfile index
 

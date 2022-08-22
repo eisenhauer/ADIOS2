@@ -43,8 +43,7 @@ Variable<T> &IO::DefineVariable(const std::string &name, const Dims &shape,
         {
             helper::Throw<std::invalid_argument>(
                 "Core", "IO", "DefineVariable",
-                "variable " + name + " exists in IO object " + m_Name +
-                    ", in call to DefineVariable");
+                "variable " + name + " already defined in IO " + m_Name);
         }
     }
 
@@ -134,11 +133,15 @@ Attribute<T> &IO::DefineAttribute(const std::string &name, const T &value,
             {
                 Attribute<T> &a =
                     static_cast<Attribute<T> &>(*itExistingAttribute->second);
+
                 a.Modify(value);
+                void *Data = &a.m_DataSingleValue;
+                if (a.m_DataArray.size() != 0)
+                    Data = a.m_DataArray.data();
                 for (auto &e : m_Engines)
                 {
                     e.second->NotifyEngineAttribute(
-                        globalName, itExistingAttribute->second->m_Type);
+                        globalName, itExistingAttribute->second.get(), Data);
                 }
             }
             else
@@ -161,8 +164,14 @@ Attribute<T> &IO::DefineAttribute(const std::string &name, const T &value,
                             globalName, value, allowModification)));
         for (auto &e : m_Engines)
         {
+            Attribute<T> &a =
+                static_cast<Attribute<T> &>(*itAttributePair.first->second);
+            void *Data = &a.m_DataSingleValue;
+            if (a.m_DataArray.size() != 0)
+                Data = a.m_DataArray.data();
+
             e.second->NotifyEngineAttribute(
-                globalName, itAttributePair.first->second->m_Type);
+                globalName, itAttributePair.first->second.get(), Data);
         }
         return static_cast<Attribute<T> &>(*itAttributePair.first->second);
     }
@@ -203,10 +212,12 @@ IO::DefineAttribute(const std::string &name, const T *array,
                 Attribute<T> &a =
                     static_cast<Attribute<T> &>(*itExistingAttribute->second);
                 a.Modify(array, elements);
+                void *Data = &a.m_DataSingleValue;
+                if (a.m_DataArray.size() != 0)
+                    Data = a.m_DataArray.data();
                 for (auto &e : m_Engines)
                 {
-                    e.second->NotifyEngineAttribute(
-                        globalName, itExistingAttribute->second->m_Type);
+                    e.second->NotifyEngineAttribute(globalName, &a, Data);
                 }
             }
             else
@@ -227,10 +238,12 @@ IO::DefineAttribute(const std::string &name, const T *array,
         auto itAttributePair = m_Attributes.emplace(
             globalName, std::unique_ptr<AttributeBase>(new Attribute<T>(
                             globalName, array, elements, allowModification)));
+        Attribute<T> &a =
+            static_cast<Attribute<T> &>(*itAttributePair.first->second);
+        void *Data = (void *)array;
         for (auto &e : m_Engines)
         {
-            e.second->NotifyEngineAttribute(
-                globalName, itAttributePair.first->second->m_Type);
+            e.second->NotifyEngineAttribute(globalName, &a, Data);
         }
         return static_cast<Attribute<T> &>(*itAttributePair.first->second);
     }

@@ -16,6 +16,71 @@
 char *SSTStreamStatusStr[] = {"NotOpen",    "Opening",    "Established",
                               "PeerClosed", "PeerFailed", "Closed"};
 
+#ifdef MUTEX_DEBUG
+#define STREAM_MUTEX_LOCK(Stream)                                              \
+    {                                                                          \
+        fprintf(stderr, "(PID %lx, TID %lx) CP_COMMON Trying lock line %d\n",  \
+                (long)getpid(), (long)gettid(), __LINE__);                     \
+        pthread_mutex_lock(&Stream->DataLock);                                 \
+        Stream->Locked++;                                                      \
+        fprintf(stderr, "(PID %lx, TID %lx) CP_COMMON Got lock\n",             \
+                (long)getpid(), (long)gettid());                               \
+    }
+
+#define STREAM_MUTEX_UNLOCK(Stream)                                            \
+    {                                                                          \
+        fprintf(stderr, "(PID %lx, TID %lx) CP_COMMON UNlocking line %d\n",    \
+                (long)getpid(), (long)gettid(), __LINE__);                     \
+        Stream->Locked--;                                                      \
+        pthread_mutex_unlock(&Stream->DataLock);                               \
+    }
+#define STREAM_CONDITION_WAIT(Stream)                                          \
+    {                                                                          \
+        fprintf(                                                               \
+            stderr,                                                            \
+            "(PID %lx, TID %lx) CP_COMMON Dropping Condition Lock line %d\n",  \
+            (long)getpid(), (long)gettid(), __LINE__);                         \
+        Stream->Locked = 0;                                                    \
+        pthread_cond_wait(&Stream->DataCondition, &Stream->DataLock);          \
+        fprintf(                                                               \
+            stderr,                                                            \
+            "(PID %lx, TID %lx) CP_COMMON Acquired Condition Lock line %d\n",  \
+            (long)getpid(), (long)gettid(), __LINE__);                         \
+        Stream->Locked = 1;                                                    \
+    }
+#define STREAM_CONDITION_SIGNAL(Stream)                                        \
+    {                                                                          \
+        assert(Stream->Locked == 1);                                           \
+        fprintf(stderr,                                                        \
+                "(PID %lx, TID %lx) CP_COMMON Signalling Condition line %d\n", \
+                (long)getpid(), (long)gettid(), __LINE__);                     \
+        pthread_cond_signal(&Stream->DataCondition);                           \
+    }
+
+#define STREAM_ASSERT_LOCKED(Stream)                                           \
+    {                                                                          \
+        assert(Stream->Locked == 1);                                           \
+    }
+#else
+#define STREAM_MUTEX_LOCK(Stream)                                              \
+    {                                                                          \
+        pthread_mutex_lock(&Stream->DataLock);                                 \
+    }
+#define STREAM_MUTEX_UNLOCK(Stream)                                            \
+    {                                                                          \
+        pthread_mutex_unlock(&Stream->DataLock);                               \
+    }
+#define STREAM_CONDITION_WAIT(Stream)                                          \
+    {                                                                          \
+        pthread_cond_wait(&Stream->DataCondition, &Stream->DataLock);          \
+    }
+#define STREAM_CONDITION_SIGNAL(Stream)                                        \
+    {                                                                          \
+        pthread_cond_signal(&Stream->DataCondition);                           \
+    }
+#define STREAM_ASSERT_LOCKED(Stream)
+#endif
+
 void CP_validateParams(SstStream Stream, SstParams Params, int Writer)
 {
     if (Params->RendezvousReaderCount >= 0)
@@ -65,6 +130,10 @@ void CP_validateParams(SstStream Stream, SstParams Params, int Writer)
                  (strcmp(SelectedTransport, "fabric") == 0))
         {
             Params->DataTransport = strdup("rdma");
+        }
+        else
+        {
+            Params->DataTransport = strdup(SelectedTransport);
         }
         free(SelectedTransport);
     }
@@ -171,6 +240,8 @@ static char *SstQueueFullStr[] = {"Block", "Discard"};
 static char *SstCompressStr[] = {"None", "ZFP"};
 static char *SstCommPatternStr[] = {"Min", "Peer"};
 static char *SstPreloadModeStr[] = {"Off", "On", "Auto"};
+static char *SstStepDistributionModeStr[] = {"StepsAllToAll", "StepsRoundRobin",
+                                             "StepsOnDemand"};
 
 extern void CP_dumpParams(SstStream Stream, struct _SstParams *Params,
                           int ReaderSide)
@@ -188,6 +259,8 @@ extern void CP_dumpParams(SstStream Stream, struct _SstParams *Params,
                 (Params->QueueLimit == 0) ? "(unlimited)" : "");
         fprintf(stderr, "Param -   QueueFullPolicy=%s\n",
                 SstQueueFullStr[Params->QueueFullPolicy]);
+        fprintf(stderr, "Param -   StepDistributionMode=%s\n",
+                SstStepDistributionModeStr[Params->StepDistributionMode]);
     }
     fprintf(stderr, "Param -   DataTransport=%s\n",
             Params->DataTransport ? Params->DataTransport : "");
@@ -530,6 +603,16 @@ static FMField ReaderActivateList[] = {
 static FMStructDescRec ReaderActivateStructs[] = {
     {"ReaderActivate", ReaderActivateList, sizeof(struct _ReaderActivateMsg),
      NULL},
+    {NULL, NULL, 0, NULL}};
+
+static FMField ReaderRequestStepList[] = {
+    {"WSR_Stream", "integer", sizeof(void *),
+     FMOffset(struct _ReaderRequestStepMsg *, WSR_Stream)},
+    {NULL, NULL, 0, 0}};
+
+static FMStructDescRec ReaderRequestStepStructs[] = {
+    {"ReaderRequestStep", ReaderRequestStepList,
+     sizeof(struct _ReaderRequestStepMsg), NULL},
     {NULL, NULL, 0, NULL}};
 
 static FMField WriterCloseList[] = {
@@ -910,6 +993,11 @@ static void doCMFormatRegistration(CP_GlobalCMInfo CPInfo,
         CMregister_format(CPInfo->cm, ReaderActivateStructs);
     CMregister_handler(CPInfo->ReaderActivateFormat, CP_ReaderActivateHandler,
                        NULL);
+    CPInfo->ReaderRequestStepFormat =
+        CMregister_format(CPInfo->cm, ReaderRequestStepStructs);
+    CMregister_handler(CPInfo->ReaderRequestStepFormat,
+                       CP_ReaderRequestStepHandler, NULL);
+
     CPInfo->ReleaseTimestepFormat =
         CMregister_format(CPInfo->cm, ReleaseTimestepStructs);
     CMregister_handler(CPInfo->ReleaseTimestepFormat, CP_ReleaseTimestepHandler,
@@ -1108,9 +1196,9 @@ extern void SstStreamDestroy(SstStream Stream)
      * in a safe way after all streams have been destroyed
      */
     struct _SstStream StackStream;
-    pthread_mutex_lock(&Stream->DataLock);
     CP_verbose(Stream, PerStepVerbose, "Destroying stream %p, name %s\n",
                Stream, Stream->Filename);
+    STREAM_MUTEX_LOCK(Stream);
     StackStream = *Stream;
     Stream->Status = Destroyed;
     struct _TimestepMetadataList *Next = Stream->Timesteps;
@@ -1120,9 +1208,10 @@ extern void SstStreamDestroy(SstStream Stream)
         free(Stream->Timesteps);
         Stream->Timesteps = Next;
     }
+
     if (Stream->DP_Stream)
     {
-        pthread_mutex_unlock(&Stream->DataLock);
+        STREAM_MUTEX_UNLOCK(Stream);
         if (Stream->Role == ReaderRole)
         {
             Stream->DP_Interface->destroyReader(&Svcs, Stream->DP_Stream);
@@ -1131,8 +1220,10 @@ extern void SstStreamDestroy(SstStream Stream)
         {
             Stream->DP_Interface->destroyWriter(&Svcs, Stream->DP_Stream);
         }
-        pthread_mutex_lock(&Stream->DataLock);
+        Stream->DP_Stream = NULL;
+        STREAM_MUTEX_LOCK(Stream);
     }
+
     if (Stream->Readers)
     {
         for (int i = 0; i < Stream->ReaderCount; i++)
@@ -1257,7 +1348,7 @@ extern void SstStreamDestroy(SstStream Stream)
     FreeCustomStructs(&Stream->CPInfo->CustomStructs);
     free(Stream->CPInfo);
 
-    pthread_mutex_unlock(&Stream->DataLock);
+    STREAM_MUTEX_UNLOCK(Stream);
     //   Stream is free'd in LastCall
 
     pthread_mutex_lock(&StateMutex);

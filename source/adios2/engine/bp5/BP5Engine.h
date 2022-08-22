@@ -23,6 +23,13 @@ namespace core
 namespace engine
 {
 
+/**
+ * sub-block size for min/max calculation of large arrays in number of
+ * elements (not bytes). The default big number per Put() default will
+ * result in the original single min/max value-pair per block
+ */
+constexpr size_t DefaultStatsBlockSize = 1125899906842624ULL;
+
 class BP5Engine
 {
 public:
@@ -58,6 +65,15 @@ public:
     static constexpr size_t m_ColumnMajorFlagPosition = 40;
     static constexpr size_t m_VersionTagPosition = 0;
     static constexpr size_t m_VersionTagLength = 32;
+
+    static constexpr uint8_t m_BP5MinorVersion = 2;
+
+    /** Index record types */
+    enum IndexRecord
+    {
+        StepRecord = 's',
+        WriterMapRecord = 'w',
+    };
 
     std::vector<std::string>
     GetBPSubStreamNames(const std::vector<std::string> &names,
@@ -117,13 +133,13 @@ public:
     MACRO(BeginStepPollingFrequencySecs, Float, float, 1.0f)                   \
     MACRO(StreamReader, Bool, bool, false)                                     \
     MACRO(BurstBufferDrain, Bool, bool, true)                                  \
-    MACRO(BurstBufferPath, String, std::string, (char *)(intptr_t)0)           \
+    MACRO(BurstBufferPath, String, std::string, "")                            \
     MACRO(NodeLocal, Bool, bool, false)                                        \
     MACRO(verbose, Int, int, 0)                                                \
     MACRO(CollectiveMetadata, Bool, bool, true)                                \
     MACRO(NumAggregators, UInt, unsigned int, 0)                               \
     MACRO(AggregatorRatio, UInt, unsigned int, 0)                              \
-    MACRO(NumSubFiles, UInt, unsigned int, 999999)                             \
+    MACRO(NumSubFiles, UInt, unsigned int, 0)                                  \
     MACRO(StripeSize, UInt, unsigned int, 4096)                                \
     MACRO(DirectIO, Bool, bool, false)                                         \
     MACRO(DirectIOAlignOffset, UInt, unsigned int, 512)                        \
@@ -139,8 +155,13 @@ public:
     MACRO(MaxShmSize, SizeBytes, size_t, DefaultMaxShmSize)                    \
     MACRO(BufferVType, BufferVType, int, (int)BufferVType::ChunkVType)         \
     MACRO(AppendAfterSteps, Int, int, INT_MAX)                                 \
-    MACRO(SelectSteps, String, std::string, (char *)(intptr_t)0)               \
-    MACRO(ReaderShortCircuitReads, Bool, bool, false)
+    MACRO(SelectSteps, String, std::string, "")                                \
+    MACRO(ReaderShortCircuitReads, Bool, bool, false)                          \
+    MACRO(StatsLevel, UInt, unsigned int, 1)                                   \
+    MACRO(StatsBlockSize, SizeBytes, size_t, DefaultStatsBlockSize)            \
+    MACRO(Threads, UInt, unsigned int, 0)                                      \
+    MACRO(UseOneTimeAttributes, Bool, bool, true)                              \
+    MACRO(MaxOpenFilesAtOnce, UInt, unsigned int, UINT_MAX)
 
     struct BP5Params
     {
