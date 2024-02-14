@@ -174,10 +174,6 @@ static void ParseArgs(int argc, char **argv)
         }
         else if (std::string(argv[1]) == "--scream")
         {
-            NumArrays = 535;
-            NumVars = 1000;
-            NumAttrs = 3800;
-            NumBlocks = 1;
             Scream = 1;
         }
         else if (std::string(argv[1]) == "--warpx")
@@ -9063,7 +9059,7 @@ void DoScreamPuts(adios2::IO io, adios2::Engine writer, size_t rank, size_t time
         {
         case GlobalArray:
 
-            throw std::invalid_argument("Unhangled global");
+            throw std::invalid_argument("Unhandled global");
             break;
 
         case LocalArray:
@@ -9150,6 +9146,85 @@ void DoScreamPuts(adios2::IO io, adios2::Engine writer, size_t rank, size_t time
     }
 }
 
+void DoScreamGets(adios2::IO io, adios2::Engine reader)
+{
+    static std::vector<double> double_in;
+    static std::vector<int64_t> int64_in;
+    static std::vector<int32_t> int32_in;
+    static std::vector<uint8_t> uint8_in;
+    for (auto VarDef : ScreamVarDefinitions)
+    {
+        switch (VarDef.varType)
+        {
+        case GlobalArray:
+
+            throw std::invalid_argument("Unhandled global");
+            break;
+
+        case LocalArray:
+            switch (VarDef.Type)
+            {
+            case adios2::DataType::Double: {
+                auto Var = io.InquireVariable<double>(VarDef.Name);
+                reader.Get(Var, double_in);
+                break;
+            }
+            case adios2::DataType::Int64: {
+                auto Var = io.InquireVariable<int64_t>(VarDef.Name);
+                reader.Get(Var, int64_in);
+                break;
+            }
+            case adios2::DataType::Int32: {
+                auto Var = io.InquireVariable<int32_t>(VarDef.Name);
+                reader.Get(Var, int32_in);
+                break;
+            }
+            case adios2::DataType::UInt8: {
+                auto Var = io.InquireVariable<uint8_t>(VarDef.Name);
+                reader.Get(Var, uint8_in);
+                break;
+            }
+            default:
+                throw std::invalid_argument("Bad Var Type");
+            }
+            break;
+        case GlobalValue:
+            switch (VarDef.Type)
+            {
+            case adios2::DataType::Double: {
+                double in;
+                auto Var = io.InquireVariable<double>(VarDef.Name);
+                reader.Get(Var, in);
+                break;
+            }
+            case adios2::DataType::Int64: {
+                int64_t in;
+                auto Var = io.InquireVariable<int64_t>(VarDef.Name);
+                reader.Get(Var, in);
+                break;
+            }
+            case adios2::DataType::Int32: {
+                auto Var = io.InquireVariable<int32_t>(VarDef.Name);
+                int32_t in;
+                reader.Get(Var, in);
+                break;
+            }
+            case adios2::DataType::UInt8: {
+                auto Var = io.InquireVariable<uint8_t>(VarDef.Name);
+                uint8_t in;
+                reader.Get(Var, in);
+                break;
+            }
+            default:
+                throw std::invalid_argument("Bad Var Type");
+            }
+            break;
+        default:
+            throw std::invalid_argument("Bad Var Class");
+        }
+    }
+}
+
 void DoScreamAttrDefinition(adios2::IO io, adios2::Engine writer, size_t rank, size_t timestep)
 {
     for (auto AttrDef : ScreamAttrs)
@@ -9188,6 +9263,9 @@ void DoScreamOutput(adios2::IO io, adios2::Engine writer, size_t rank, size_t ti
     }
     DoScreamPuts(io, writer, rank, timestep);
 }
+
+void DoScreamInput(adios2::IO io, adios2::Engine reader) { DoScreamGets(io, reader); }
+
 void DoWriter(adios2::Params writerParams)
 {
     // form a mpiSize * Nx 1D array
@@ -9340,89 +9418,94 @@ void DoReader()
         {
             break;
         }
-        //	if (DoGets) {
-        std::vector<adios2::Variable<float>> Floats;
-        std::vector<adios2::Variable<float>> FloatArrays;
-        std::vector<adios2::Attribute<float>> Attributes;
-        int Cont = 1;
-        int i = 0;
-        while (Cont)
+        if (Scream)
         {
-            std::string varname = "Variable" + std::to_string(i++);
-            adios2::Variable<float> tmp = io.InquireVariable<float>(varname);
-            if (tmp)
-            {
-                Floats.push_back(tmp);
-            }
-            else
-            {
-                Cont = 0;
-            }
+            DoScreamInput(io, reader);
         }
-        Cont = 1;
-        i = 0;
-        while (Cont)
+        else
         {
-            std::string varname = "Array" + std::to_string(i++);
-            adios2::Variable<float> tmp = io.InquireVariable<float>(varname);
-            if (tmp)
+            std::vector<adios2::Variable<float>> Floats;
+            std::vector<adios2::Variable<float>> FloatArrays;
+            std::vector<adios2::Attribute<float>> Attributes;
+            int Cont = 1;
+            int i = 0;
+            while (Cont)
             {
-                FloatArrays.push_back(tmp);
+                std::string varname = "Variable" + std::to_string(i++);
+                adios2::Variable<float> tmp = io.InquireVariable<float>(varname);
+                if (tmp)
+                {
+                    Floats.push_back(tmp);
+                }
+                else
+                {
+                    Cont = 0;
+                }
             }
-            else
+            Cont = 1;
+            i = 0;
+            while (Cont)
             {
-                Cont = 0;
+                std::string varname = "Array" + std::to_string(i++);
+                adios2::Variable<float> tmp = io.InquireVariable<float>(varname);
+                if (tmp)
+                {
+                    FloatArrays.push_back(tmp);
+                }
+                else
+                {
+                    Cont = 0;
+                }
             }
-        }
-        i = 0;
-        Cont = 1;
-        while (Cont)
-        {
-            std::string varname = "Attribute" + std::to_string(i++);
-            adios2::Attribute<float> tmp = io.InquireAttribute<float>(varname);
-            if (tmp)
+            i = 0;
+            Cont = 1;
+            while (Cont)
             {
-                Attributes.push_back(tmp);
+                std::string varname = "Attribute" + std::to_string(i++);
+                adios2::Attribute<float> tmp = io.InquireAttribute<float>(varname);
+                if (tmp)
+                {
+                    Attributes.push_back(tmp);
+                }
+                else
+                {
+                    Cont = 0;
+                }
             }
-            else
-            {
-                Cont = 0;
-            }
-        }
-        LastVarSize = (int)Floats.size();
-        for (auto Var : Floats)
-        {
-            reader.Get(Var, in.data());
-        }
-        LastArraySize = (int)FloatArrays.size();
-        for (auto Var : FloatArrays)
-        {
-            if (Var.ShapeID() == adios2::ShapeID::GlobalArray)
+            LastVarSize = (int)Floats.size();
+            for (auto Var : Floats)
             {
                 reader.Get(Var, in.data());
             }
-            else
+            LastArraySize = (int)FloatArrays.size();
+            for (auto Var : FloatArrays)
             {
-                // local, go through blocks
-                for (int rank = 0; rank < WriterSize; rank++)
+                if (Var.ShapeID() == adios2::ShapeID::GlobalArray)
                 {
-                    for (auto blk : reader.BlocksInfo(Var, reader.CurrentStep()))
+                    reader.Get(Var, in.data());
+                }
+                else
+                {
+                    // local, go through blocks
+                    for (int rank = 0; rank < WriterSize; rank++)
                     {
-                        Var.SetBlockSelection(blk.BlockID);
-                        reader.Get(Var, in.data());
+                        for (auto blk : reader.BlocksInfo(Var, reader.CurrentStep()))
+                        {
+                            Var.SetBlockSelection(blk.BlockID);
+                            reader.Get(Var, in.data());
+                        }
                     }
                 }
             }
-        }
-        LastAttrsSize = (int)Attributes.size();
-        for (auto Attr : Attributes)
-        {
-            if (Attr.Data().front() != 0.0)
+            LastAttrsSize = (int)Attributes.size();
+            for (auto Attr : Attributes)
             {
-                std::cerr << "Bad attr data" << std::endl;
+                if (Attr.Data().front() != 0.0)
+                {
+                    std::cerr << "Bad attr data" << std::endl;
+                }
             }
         }
-        //	}
         reader.EndStep();
         finishTS = std::chrono::high_resolution_clock::now();
         InstallTime += (endBeginStep - startTS);
@@ -9437,14 +9520,21 @@ void DoReaderOutput()
 
     std::cout << "Metadata Traversal Time " << TraversalTime.count() << " seconds." << std::endl;
 
-    std::cout << "Parameters Nsteps=" << NSteps << ", NumArrays=" << NumArrays
-              << ", NumVArs=" << NumVars << ", NumAttrs=" << NumAttrs << ", NumBlocks=" << NumBlocks
-              << std::endl;
-    if ((NumArrays != LastArraySize) || (NumVars != LastVarSize) || (NumAttrs != LastAttrsSize))
+    if (Scream)
     {
-        std::cout << "Arrays=" << LastArraySize << ", Vars=" << LastVarSize
-                  << ", Attrs=" << LastAttrsSize << ", NumBlocks=" << NumBlocks << std::endl;
-        std::cout << "Inconsistency" << std::endl;
+        std::cout << "Scream custom data" << std::endl;
+    }
+    else
+    {
+        std::cout << "Parameters Nsteps=" << NSteps << ", NumArrays=" << NumArrays
+                  << ", NumVArs=" << NumVars << ", NumAttrs=" << NumAttrs
+                  << ", NumBlocks=" << NumBlocks << std::endl;
+        if ((NumArrays != LastArraySize) || (NumVars != LastVarSize) || (NumAttrs != LastAttrsSize))
+        {
+            std::cout << "Arrays=" << LastArraySize << ", Vars=" << LastVarSize
+                      << ", Attrs=" << LastAttrsSize << ", NumBlocks=" << NumBlocks << std::endl;
+            std::cout << "Inconsistency" << std::endl;
+        }
     }
 }
 
