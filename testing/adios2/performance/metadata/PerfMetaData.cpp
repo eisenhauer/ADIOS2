@@ -9194,25 +9194,25 @@ void DoScreamGets(adios2::IO io, adios2::Engine reader)
             case adios2::DataType::Double: {
                 double in;
                 auto Var = io.InquireVariable<double>(VarDef.Name);
-                reader.Get(Var, in);
+                reader.Get(Var, &in);
                 break;
             }
             case adios2::DataType::Int64: {
                 int64_t in;
                 auto Var = io.InquireVariable<int64_t>(VarDef.Name);
-                reader.Get(Var, in);
+                reader.Get(Var, &in);
                 break;
             }
             case adios2::DataType::Int32: {
                 auto Var = io.InquireVariable<int32_t>(VarDef.Name);
                 int32_t in;
-                reader.Get(Var, in);
+                reader.Get(Var, &in);
                 break;
             }
             case adios2::DataType::UInt8: {
                 auto Var = io.InquireVariable<uint8_t>(VarDef.Name);
                 uint8_t in;
-                reader.Get(Var, in);
+                reader.Get(Var, &in);
                 break;
             }
             default:
@@ -9241,7 +9241,7 @@ void DoScreamAttrDefinition(adios2::IO io, adios2::Engine writer, size_t rank, s
                 io.DefineAttribute<double>(AttrDef.Name, 0.0);
                 break;
             case adios2::DataType::String:
-                io.DefineAttribute<std::string>(AttrDef.Name, *(std::string *)AttrDef.Data);
+                io.DefineAttribute<std::string>(AttrDef.Name, std::string((char *)AttrDef.Data));
                 break;
             default:
                 throw std::invalid_argument("Bad Attr Type");
@@ -9257,11 +9257,12 @@ void DoScreamAttrDefinition(adios2::IO io, adios2::Engine writer, size_t rank, s
 
 void DoScreamOutput(adios2::IO io, adios2::Engine writer, size_t rank, size_t timestep)
 {
-    if (timestep == 0)
+    if (timestep == (size_t)-1)
     {
         DoScreamAttrDefinition(io, writer, rank, timestep);
+    } else {
+	DoScreamPuts(io, writer, rank, timestep);
     }
-    DoScreamPuts(io, writer, rank, timestep);
 }
 
 void DoScreamInput(adios2::IO io, adios2::Engine reader) { DoScreamGets(io, reader); }
@@ -9306,33 +9307,37 @@ void DoWriter(adios2::Params writerParams)
     std::vector<float> myFloats = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
     adios2::Variable<float> *Floats = new adios2::Variable<float>[NumVars];
     adios2::Variable<float> *FloatArrays = new adios2::Variable<float>[NumArrays];
-    if (mpiRank == 0)
-    {
-        // attributes and globals on rank 0
-        for (int i = 0; i < NumVars; i++)
-        {
-            std::string varname = "Variable" + std::to_string(i);
-            Floats[i] = io.DefineVariable<float>(varname);
-        }
-        for (int i = 0; i < NumAttrs; i++)
-        {
-            std::string varname = "Attribute" + std::to_string(i);
-            io.DefineAttribute<float>(varname, 0.0);
-        }
-    }
-    for (int i = 0; i < NumArrays; i++)
-    {
-        std::string varname = "Array" + std::to_string(i);
-        if (NumBlocks == 1)
-        {
-            FloatArrays[i] =
-                io.DefineVariable<float>(varname, {(unsigned long)mpiSize},
-                                         {(unsigned long)mpiRank}, {1}, adios2::ConstantDims);
-        }
-        else
-        {
-            FloatArrays[i] = io.DefineVariable<float>(varname, {}, {}, {1}, adios2::ConstantDims);
-        }
+    if (Scream) {
+	DoScreamOutput(io, writer, mpiRank, (size_t) -1);
+    } else {
+	if (mpiRank == 0)
+	    {
+		// attributes and globals on rank 0
+		for (int i = 0; i < NumVars; i++)
+		    {
+			std::string varname = "Variable" + std::to_string(i);
+			Floats[i] = io.DefineVariable<float>(varname);
+		    }
+		for (int i = 0; i < NumAttrs; i++)
+		    {
+			std::string varname = "Attribute" + std::to_string(i);
+			io.DefineAttribute<float>(varname, 0.0);
+		    }
+	    }
+	for (int i = 0; i < NumArrays; i++)
+	    {
+		std::string varname = "Array" + std::to_string(i);
+		if (NumBlocks == 1)
+		    {
+			FloatArrays[i] =
+			    io.DefineVariable<float>(varname, {(unsigned long)mpiSize},
+						     {(unsigned long)mpiRank}, {1}, adios2::ConstantDims);
+		    }
+		else
+		    {
+			FloatArrays[i] = io.DefineVariable<float>(varname, {}, {}, {1}, adios2::ConstantDims);
+		    }
+	    }
     }
     start = std::chrono::high_resolution_clock::now();
     for (int j = 0; j < NSteps; j++)
