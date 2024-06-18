@@ -10,10 +10,12 @@ RUN cd / && \
 COPY packages.yaml /etc/spack/packages.yaml
 # TODO: Patch only needed until we merge https://github.com/spack/spack/pull/40964
 COPY 0001-mpich-support-ch3-sock.patch /spack
+COPY 0002-adios2-add-xrootd-variant.patch /spack
 
 # Install base specs
 RUN cd spack && \
     git apply 0001-mpich-support-ch3-sock.patch && \
+    git apply 0002-adios2-add-xrootd-variant.patch && \
     . /spack/share/spack/setup-env.sh && \
     spack mirror add E4S "https://cache.e4s.io/${E4S_VERSION}" && \
     export ADIOS_SPEC_NO_MPI="adios2~mpi" && \
