@@ -45,12 +45,6 @@ class XrdSsiSvService : public XrdSsiService, public XrdSsiResponder
 {
 public:
     //-----------------------------------------------------------------------------
-    //! Attach to a previously detached server-side request.
-    //-----------------------------------------------------------------------------
-
-    virtual void Attach(XrdSsiRequest &reqRef, std::string handle) {}
-
-    //-----------------------------------------------------------------------------
     //! Do delayed echo (internal)
     //-----------------------------------------------------------------------------
 
