@@ -64,13 +64,6 @@ using namespace std;
 
 namespace
 {
-void *SvWecho(void *svP)
-{
-    XrdSsiSvService *sessP = (XrdSsiSvService *)svP;
-    sessP->doWecho();
-    return 0;
-}
-
 void *SvAdiosGet(void *svP)
 {
     XrdSsiSvService *sessP = (XrdSsiSvService *)svP;
@@ -569,11 +562,9 @@ int XrdSsiSvService::Copy2Buff(char *dest, int dsz, const char *src, int ssz)
 
 void XrdSsiSvService::Respond(const char *rData, const char *mData)
 {
-    XrdSsiResponder::Status rc;
-    int rLen;
-
     throw std::logic_error("Respond shouldn't be called");
 }
+
 void XrdSsiSvService::AdiosRespond(const char *rData, const char *mData)
 {
     XrdSsiResponder::Status rc;
