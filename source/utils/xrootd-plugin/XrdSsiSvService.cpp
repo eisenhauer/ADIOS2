@@ -494,7 +494,6 @@ void XrdSsiSvService::ProcessRequest4Me(XrdSsiRequest *rqstP)
         pthread_t tid;
         auto engine = poolEntry->m_engine;
         auto io = poolEntry->m_io;
-        auto var = io.InquireVariable(VarName);
         adios2::Box<adios2::Dims> varSel(Start, Count);
         adios2::DataType TypeOfVar = io.InquireVariableType(VarName);
         try
