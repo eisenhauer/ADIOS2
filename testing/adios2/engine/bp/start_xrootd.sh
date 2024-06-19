@@ -1,0 +1,7 @@
+#!/bin/sh
+if [ "$(id -u)" -eq 0 ]; then
+    # we run as root in CI in docker images, this is OK, but we have to tell XRootD that it's OK.
+    set ROOT_ARGS="-R root"
+fi
+echo running $1 in directory $2 with root args $ROOT_ARGS
+$1 -b -l /tmp/xroot.log $ROOT_ARGS -w $2 -c $2/xroot/etc/xrootd/xrootd-ssi.cfg
