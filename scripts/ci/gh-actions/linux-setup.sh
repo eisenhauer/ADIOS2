@@ -19,3 +19,6 @@ find "$local_scripts_dir" -type f -name '*.sh' -perm /a=x -exec ./{} \;
 find "$local_scripts_dir" -type f -name '*.cmake' -exec cmake --trace -VV -P {} \;
 
 echo "**********Install dependencies End**********"
+
+useradd user
+echo -e "placeholder\nplaceholder" | passwd user
