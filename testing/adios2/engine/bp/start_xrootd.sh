@@ -1,6 +1,6 @@
 #!/bin/sh
 if [ "$(id -u)" -eq 0 ]; then
-    # we run as root in CI in docker images, this is OK, but we have to tell XRootD that it's OK.
-    ROOT_ARGS="-R sshd"
+    # UID 1 means daemon in any ubuntu distro
+    ROOT_ARGS="-R 1"
 fi
 "$1" -b -l /tmp/xroot.log "$ROOT_ARGS" -w "$2" -c "$2"/xroot/etc/xrootd/xrootd-ssi.cfg
