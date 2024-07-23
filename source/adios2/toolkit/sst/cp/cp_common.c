@@ -865,6 +865,7 @@ void **CP_consolidateDataToAll(SstStream Stream, void *LocalInfo, FFSTypeHandle 
 
 atom_t CM_TRANSPORT_ATOM = 0;
 static atom_t IP_INTERFACE_ATOM = 0;
+static atom_t IP_PORT_ATOM = 0;
 static atom_t CM_ENET_CONN_TIMEOUT = -1;
 
 static void initAtomList()
@@ -874,6 +875,7 @@ static void initAtomList()
 
     CM_TRANSPORT_ATOM = attr_atom_from_string("CM_TRANSPORT");
     IP_INTERFACE_ATOM = attr_atom_from_string("IP_INTERFACE");
+    IP_PORT_ATOM = attr_atom_from_string("IP_PORT");
     CM_ENET_CONN_TIMEOUT = attr_atom_from_string("CM_ENET_CONN_TIMEOUT");
 }
 
