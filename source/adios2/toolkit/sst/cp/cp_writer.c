@@ -1295,6 +1295,12 @@ SstStream SstWriterOpen(const char *Name, SstParams Params, SMPI_Comm comm)
 
     FinalizeCPInfo(Stream->CPInfo, Stream->DP_Interface);
 
+    int port;
+    char *ContactStr = CP_GetContactString(Stream, NULL);
+    attr_list ContactList = attr_list_from_string(ContactStr);
+    get_int_attr(ContactList, IP_PORT_ATOM, &port);
+    printf("Writer Rank %d listening at port %d\n", Stream->Rank, port); 
+
     if (Stream->RendezvousReaderCount > 0)
     {
         Stream->FirstReaderCondition = CMCondition_get(Stream->CPInfo->SharedCM->cm, NULL);
