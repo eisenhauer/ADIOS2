@@ -602,3 +602,4 @@ extern CPNetworkInfoFunc globalNetinfoCallback;
 extern void SSTSetNetworkCallback(CPNetworkInfoFunc callback);
 extern void DoStreamSummary(SstStream Stream);
 #define SSIZE_T_MAX (9223372036854775807)
+extern int IP_PORT_ATOM;

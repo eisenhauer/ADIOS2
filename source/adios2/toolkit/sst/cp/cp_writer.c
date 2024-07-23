@@ -864,6 +864,7 @@ WS_ReaderInfo WriterParticipateInReaderOpen(SstStream Stream)
     memset(&cpInfo, 0, sizeof(cpInfo));
     cpInfo.ContactInfo = CP_GetContactString(Stream, NULL);
     int port;
+    attr_list ContactList = attr_list_from_string(cpInfo.ContactInfo);
     get_int_attr(ContactList, IP_PORT_ATOM, &port);
     printf("Writer Rank %d listening at port %d\n", Stream->Rank, port); 
     cpInfo.WriterID = CP_WSR_Stream;

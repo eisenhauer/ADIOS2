@@ -865,7 +865,7 @@ void **CP_consolidateDataToAll(SstStream Stream, void *LocalInfo, FFSTypeHandle 
 
 atom_t CM_TRANSPORT_ATOM = 0;
 static atom_t IP_INTERFACE_ATOM = 0;
-static atom_t IP_PORT_ATOM = 0;
+atom_t IP_PORT_ATOM = 0;
 static atom_t CM_ENET_CONN_TIMEOUT = -1;
 
 static void initAtomList()
