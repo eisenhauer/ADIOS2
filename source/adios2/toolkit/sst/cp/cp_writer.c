@@ -584,7 +584,7 @@ static int initWSReader(WS_ReaderInfo reader, int ReaderSize, CP_ReaderInitInfo 
             if (!reader->Connections[peer].CMconn)
             {
                 reader->Connections[peer].CMconn =
-                    CMget_conn(reader->ParentStream->CPInfo->SharedCM->cm,
+                    Tunneling_get_conn(reader->ParentStream->CPInfo->SharedCM->cm,
                                reader->Connections[peer].ContactList);
             }
 
@@ -633,7 +633,7 @@ static int initWSReader(WS_ReaderInfo reader, int ReaderSize, CP_ReaderInitInfo 
             }
             if (reader->ParentStream->ConnectionUsleepMultiplier != 0)
                 usleep(WriterRank * reader->ParentStream->ConnectionUsleepMultiplier);
-            reader->Connections[peer].CMconn = CMget_conn(
+            reader->Connections[peer].CMconn = Tunneling_get_conn(
                 reader->ParentStream->CPInfo->SharedCM->cm, reader->Connections[peer].ContactList);
 
             if (!reader->Connections[peer].CMconn)
@@ -663,7 +663,7 @@ static int initWSReader(WS_ReaderInfo reader, int ReaderSize, CP_ReaderInitInfo 
         {
             if (!reader->Connections[0].CMconn)
             {
-                reader->Connections[0].CMconn = CMget_conn(
+                reader->Connections[0].CMconn = Tunneling_get_conn(
                     reader->ParentStream->CPInfo->SharedCM->cm, reader->Connections[0].ContactList);
             }
             if (!reader->Connections[0].CMconn)

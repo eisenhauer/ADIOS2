@@ -577,6 +577,7 @@ extern void FFSFreeMarshalData(SstStream Stream);
 extern void getPeerArrays(int MySize, int MyRank, int PeerSize, int **forwardArray,
                           int **reverseArray);
 extern void AddToLastCallFreeList(void *Block);
+extern CMConnection Tunneling_get_conn(CManager cm,  attr_list attrs);
 
 enum VerbosityLevel
 {

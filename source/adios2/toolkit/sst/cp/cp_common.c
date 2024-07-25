@@ -11,6 +11,12 @@
 #ifndef _MSC_VER
 #include <pthread.h>
 #include <sys/time.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <netinet/in.h>
 #include <unistd.h>
 #else
 #include "../win_interface.h"
@@ -867,6 +873,7 @@ atom_t CM_TRANSPORT_ATOM = 0;
 static atom_t IP_INTERFACE_ATOM = 0;
 atom_t IP_PORT_ATOM = 0;
 static atom_t CM_ENET_CONN_TIMEOUT = -1;
+static atom_t SST_GROUP_ID_ATOM = -1;
 
 static void initAtomList()
 {
@@ -876,6 +883,7 @@ static void initAtomList()
     CM_TRANSPORT_ATOM = attr_atom_from_string("CM_TRANSPORT");
     IP_INTERFACE_ATOM = attr_atom_from_string("IP_INTERFACE");
     IP_PORT_ATOM = attr_atom_from_string("IP_PORT");
+    SST_GROUP_ID_ATOM = attr_atom_from_string("SST_GROUP_ID");
     CM_ENET_CONN_TIMEOUT = attr_atom_from_string("CM_ENET_CONN_TIMEOUT");
 }
 
@@ -1630,12 +1638,74 @@ static SMPI_Comm CP_getMPIComm(SstStream Stream) { return Stream->mpiComm; }
 
 extern void WriterConnCloseHandler(CManager cm, CMConnection closed_conn, void *client_data);
 extern void ReaderConnCloseHandler(CManager cm, CMConnection ClosedConn, void *client_data);
+CMConnection Tunneling_get_conn(CManager cm,  attr_list attrs)
+{
+    char *group_id = NULL;
+    if (get_string_attr(attrs, SST_GROUP_ID_ATOM, &group_id) || 1) {
+        attr_list conn_attrs = attrs;
+        // do the tunneling
+        char request[1024] = {'\0'};
+        const char *format_string = "/connect_port?jhost=%s&juser=%s&rhost=%s&ruser=%s&dhost=%s&dport=%d";
+        char *DestinationIP;
+        int DestinationPort;
+        int request_len = snprintf(request, sizeof(request), format_string, "flux.op.ccs.ornl.gov", "eisen", "defiant-login1", "eisen", DestinationIP, DestinationPort);
+        
+        union {
+            struct sockaddr s;
+            struct sockaddr_in s_I4;
+        } sock_addr;
+
+        sock_addr.s_I4.sin_addr.s_addr = INADDR_LOOPBACK;
+        sock_addr.s_I4.sin_port = 30000;
+
+
+        int sock = socket(AF_INET, SOCK_STREAM, 0);
+        /* Actually connect. */
+        if (connect(sock, (struct sockaddr *)&sock_addr.s_I4, sizeof(sock_addr)) == -1)
+                printf("Error\n");
+        
+        /* Send request. */
+        printf("Request is \"%s\"\n", request);
+        int nbytes_total = 0;
+        while (nbytes_total < request_len)
+        {
+            int nbytes_last =
+                write(sock, request + nbytes_total, request_len - nbytes_total);
+            if (nbytes_last == -1)
+                printf("Error\n");
+            nbytes_total += nbytes_last;
+        }
+
+        /* Read the response. */
+        size_t bytes_recd = 0;
+        char recv_buffer[2048];
+        while (1)
+        {
+            size_t remaining = sizeof(recv_buffer) - bytes_recd;
+            int read_len = remaining;
+            nbytes_total = read(sock, recv_buffer + bytes_recd, read_len);
+            if (nbytes_total == -1)
+            {
+                break;
+            }
+            bytes_recd += nbytes_total;
+        }
+
+        close(sock);
+        printf("We got %s from the tunnel server\n", recv_buffer);
+        
+        return CMget_conn(cm, conn_attrs);
+    } else {
+        return CMget_conn(cm, attrs);
+    }
+}
+
 static int CP_sendToPeer(SstStream s, CP_PeerCohort Cohort, int Rank, CMFormat Format, void *Data)
 {
     CP_PeerConnection *Peers = (CP_PeerConnection *)Cohort;
     if (Peers[Rank].CMconn == NULL)
     {
-        Peers[Rank].CMconn = CMget_conn(s->CPInfo->SharedCM->cm, Peers[Rank].ContactList);
+        Peers[Rank].CMconn = Tunneling_get_conn(s->CPInfo->SharedCM->cm, Peers[Rank].ContactList);
         if (!Peers[Rank].CMconn)
         {
             CP_error(s, "Connection failed in CP_sendToPeer! Contact list was:\n");
