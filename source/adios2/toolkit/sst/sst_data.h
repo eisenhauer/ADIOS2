@@ -79,7 +79,9 @@ typedef struct _SstStats
     MACRO(ReaderShortCircuitReads, Bool, int, 0)                                                   \
     MACRO(StatsLevel, Int, int, 0)                                                                 \
     MACRO(UseOneTimeAttributes, Bool, int, 0)                                                      \
-    MACRO(ControlModule, String, char *, NULL)
+    MACRO(ControlModule, String, char *, NULL)							\
+    MACRO(RemoteGroup, String, char *, NULL)
+    
 
 typedef enum
 {

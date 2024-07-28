@@ -885,6 +885,7 @@ static void initAtomList()
     IP_PORT_ATOM = attr_atom_from_string("IP_PORT");
     SST_GROUP_ID_ATOM = attr_atom_from_string("SST_GROUP_ID");
     CM_ENET_CONN_TIMEOUT = attr_atom_from_string("CM_ENET_CONN_TIMEOUT");
+    SST_GROUP_ID_ATOM = attr_atom_from_string("SST_GROUP_ID");
 }
 
 static void AddCustomStruct(CP_StructList *List, FMStructDescList Struct)
@@ -1309,6 +1310,10 @@ extern char *CP_GetContactString(SstStream Stream, attr_list DPAttrs)
     if (strcmp(Stream->ConfigParams->ControlTransport, "enet") == 0)
     {
         set_int_attr(ContactList, CM_ENET_CONN_TIMEOUT, 60000); /* 60 seconds */
+    }
+    if (Stream->ConfigParams->RemoteGroup)
+    {
+      set_string_attr(ContactList, SST_GROUP_ID_ATOM, strdup(Stream->ConfigParams->RemoteGroup));
     }
     if (DPAttrs)
     {

@@ -2275,6 +2275,7 @@ timeout_conn(CManager cm, void *client_data)
 	 CMtrace_out(conn->cm, CMLowLevelVerbose, "CM - *NOT* Sending CONN handshake message\n");
      }
  }
+extern void dump_FMFormat(FMFormat fmformat);
 
  static size_t
  CMact_on_data(CMConnection conn, CMbuffer cm_buffer, char *buffer, size_t length)
@@ -2598,6 +2599,7 @@ timeout_conn(CManager cm, void *client_data)
      original_format = FFSTypeHandle_from_encode(conn->cm->FFScontext, data_buffer);
      if (local_format == NULL) {
 	 if (conn->cm->unregistered_format_handler) {
+	   printf("Original format was : ") ; dump_FMFormat(FMFormat_of_original(original_format));
 	     conn->cm->unregistered_format_handler(conn, name_of_FMformat(FMFormat_of_original(original_format)));
 	 } else {
 	     fprintf(stderr, "No conversion found for incoming CM message\n");
@@ -3314,6 +3316,7 @@ INT_CMregister_invalid_message_handler(CManager cm, CMUnregCMHandler handler)
 	 }
 	 fprintf(cm->CMTrace_file, "CM - Writing record of type %s\n",
 		name_of_FMformat(format->fmformat));
+	 dump_FMFormat(format->fmformat);
 	 if (attrs != NULL) {
 	     fprintf(cm->CMTrace_file, "CM - write attributes are:");
 	     fdump_attr_list(cm->CMTrace_file, attrs);

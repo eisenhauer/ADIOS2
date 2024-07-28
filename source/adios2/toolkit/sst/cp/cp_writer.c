@@ -205,12 +205,12 @@ static void writeContactInfoScreen(const char *Name, SstStream Stream, attr_list
     /*
      * write the contact information file to the screen
      */
-    fprintf(stdout,
-            "The next line of output is the contact information "
-            "associated with SST output stream \"%s\".  Please make it "
-            "available to the reader.\n",
-            Name);
+    fprintf(stdout, "The next line of output is the contact information "
+           "associated with SST output stream \"%s\".  Please make it "
+           "available to the reader.\n",
+           Name);
     fprintf(stdout, "\t%s\n", Contact);
+    fflush(stdout);
     free(Contact);
 }
 
@@ -1284,7 +1284,7 @@ SstStream SstWriterOpen(const char *Name, SstParams Params, SMPI_Comm comm)
     //    printf("WRITER main program thread PID is %lx, TID %lx in writer
     //    open\n",
     //           (long)getpid(), (long)gettid());
-    Stream->DP_Interface = SelectDP(&Svcs, Stream, Stream->ConfigParams, Stream->Rank);
+    Stream->DP_Interface = SelectDP(&Svcs, Stream, Stream->ConfigParams, 0);//Stream->Rank);
 
     if (!Stream->DP_Interface)
     {
@@ -1297,9 +1297,6 @@ SstStream SstWriterOpen(const char *Name, SstParams Params, SMPI_Comm comm)
 
     int port;
     char *ContactStr = CP_GetContactString(Stream, NULL);
-    attr_list ContactList = attr_list_from_string(ContactStr);
-    get_int_attr(ContactList, IP_PORT_ATOM, &port);
-    printf("Writer Rank %d listening at port %d\n", Stream->Rank, port); 
 
     if (Stream->RendezvousReaderCount > 0)
     {
@@ -1319,7 +1316,8 @@ SstStream SstWriterOpen(const char *Name, SstParams Params, SMPI_Comm comm)
         if (registerContactInfo(Filename, Stream, DPAttrs) == 0)
             return NULL;
     }
-
+    printf("DONE WITH REGISTER\n");
+    CP_verbose(Stream, PerStepVerbose, "Done with register\n");
     if (Stream->Rank == 0)
     {
         CP_verbose(Stream, SummaryVerbose, "Opening Stream \"%s\"\n", Filename);
