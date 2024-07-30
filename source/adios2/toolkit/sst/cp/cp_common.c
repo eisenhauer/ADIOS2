@@ -872,6 +872,8 @@ void **CP_consolidateDataToAll(SstStream Stream, void *LocalInfo, FFSTypeHandle 
 atom_t CM_TRANSPORT_ATOM = 0;
 static atom_t IP_INTERFACE_ATOM = 0;
 atom_t IP_PORT_ATOM = 0;
+atom_t IP_ADDR_ATOM = 0;
+atom_t IP_HOST_ATOM = 0;
 static atom_t CM_ENET_CONN_TIMEOUT = -1;
 static atom_t SST_GROUP_ID_ATOM = -1;
 
@@ -883,6 +885,8 @@ static void initAtomList()
     CM_TRANSPORT_ATOM = attr_atom_from_string("CM_TRANSPORT");
     IP_INTERFACE_ATOM = attr_atom_from_string("IP_INTERFACE");
     IP_PORT_ATOM = attr_atom_from_string("IP_PORT");
+    IP_ADDR_ATOM = attr_atom_from_string("IP_ADDR");
+    IP_HOST_ATOM = attr_atom_from_string("IP_HOST");
     SST_GROUP_ID_ATOM = attr_atom_from_string("SST_GROUP_ID");
     CM_ENET_CONN_TIMEOUT = attr_atom_from_string("CM_ENET_CONN_TIMEOUT");
     SST_GROUP_ID_ATOM = attr_atom_from_string("SST_GROUP_ID");
@@ -1311,10 +1315,10 @@ extern char *CP_GetContactString(SstStream Stream, attr_list DPAttrs)
     {
         set_int_attr(ContactList, CM_ENET_CONN_TIMEOUT, 60000); /* 60 seconds */
     }
-    if (Stream->ConfigParams->RemoteGroup)
-    {
-      set_string_attr(ContactList, SST_GROUP_ID_ATOM, strdup(Stream->ConfigParams->RemoteGroup));
-    }
+//    if (Stream->ConfigParams->RemoteGroup)
+//    {
+//      set_string_attr(ContactList, SST_GROUP_ID_ATOM, strdup(Stream->ConfigParams->RemoteGroup));
+//    }
     if (DPAttrs)
     {
         attr_merge_lists(ContactList, DPAttrs);
@@ -1647,21 +1651,43 @@ CMConnection Tunneling_get_conn(CManager cm,  attr_list attrs)
 {
     char *group_id = NULL;
     if (get_string_attr(attrs, SST_GROUP_ID_ATOM, &group_id) || 1) {
-        attr_list conn_attrs = attrs;
+        attr_list conn_attrs;
         // do the tunneling
         char request[1024] = {'\0'};
         const char *format_string = "/connect_port?jhost=%s&juser=%s&rhost=%s&ruser=%s&dhost=%s&dport=%d";
-        char *DestinationIP;
+        int DestinationIP;
         int DestinationPort;
-        int request_len = snprintf(request, sizeof(request), format_string, "flux.op.ccs.ornl.gov", "eisen", "defiant-login1", "eisen", DestinationIP, DestinationPort);
+        char *DestinationHostStr;
+        if (!get_int_attr(attrs, IP_PORT_ATOM, &DestinationPort)) {
+            fprintf(stderr, "No IP_PORT atom\n");
+            return NULL;
+        }
+        if (!get_int_attr(attrs, IP_ADDR_ATOM, &DestinationIP)) {
+            DestinationIP = 0;
+        }
+        if (!get_string_attr(attrs, IP_HOST_ATOM, &DestinationHostStr)) {
+            fprintf(stderr, "No IP_HOST");
+            DestinationHostStr = NULL;
+        }
+        char IPstr[INET_ADDRSTRLEN];
+        if ((DestinationHostStr == NULL) && (DestinationIP == 0)) {
+            fprintf(stderr, "NO IP or Hostname for tunnel\n");
+            return NULL;
+        } else if (DestinationHostStr == NULL) {
+            inet_ntop(AF_INET, &DestinationIP, IPstr, INET_ADDRSTRLEN);
+            DestinationHostStr = &IPstr[0];
+        }
+        int request_len = snprintf(request, sizeof(request), format_string, "flux.op.ccs.ornl.gov", "eisen", "defiant-login1", "eisen", DestinationHostStr, DestinationPort);
         
         union {
             struct sockaddr s;
             struct sockaddr_in s_I4;
         } sock_addr;
 
-        sock_addr.s_I4.sin_addr.s_addr = INADDR_LOOPBACK;
-        sock_addr.s_I4.sin_port = 30000;
+        sock_addr.s_I4.sin_len = sizeof(sock_addr.s_I4);
+        sock_addr.s_I4.sin_family = AF_INET;
+        sock_addr.s_I4.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        sock_addr.s_I4.sin_port = htons(30000);
 
 
         int sock = socket(AF_INET, SOCK_STREAM, 0);
@@ -1689,15 +1715,29 @@ CMConnection Tunneling_get_conn(CManager cm,  attr_list attrs)
             size_t remaining = sizeof(recv_buffer) - bytes_recd;
             int read_len = remaining;
             nbytes_total = read(sock, recv_buffer + bytes_recd, read_len);
-            if (nbytes_total == -1)
+            if (nbytes_total == 0)
             {
                 break;
+            }
+            if (nbytes_total == -1)
+            {
+                printf("Error\n");
             }
             bytes_recd += nbytes_total;
         }
 
         close(sock);
         printf("We got %s from the tunnel server\n", recv_buffer);
+        char msg[256];
+        int forward_port;
+        sscanf(recv_buffer, "port:%d,msg:%s", &forward_port, &msg[0]);
+        printf("Forward port is %d\n", forward_port);
+        conn_attrs = create_attr_list();
+	add_attr(conn_attrs, IP_PORT_ATOM, Attr_Int4,
+		 (attr_value) (intptr_t)forward_port);
+
+        add_attr(conn_attrs, IP_ADDR_ATOM, Attr_Int4, 
+                 (attr_value)INADDR_LOOPBACK);
         
         return CMget_conn(cm, conn_attrs);
     } else {
