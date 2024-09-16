@@ -74,6 +74,102 @@ BP5Helper::BuildNodeContrib(const digest attrHash, const size_t attrSize,
     return ret;
 }
 
+std::vector<char>
+BP5Helper::BuildFixedNodeContrib(const digest attrHash, const size_t attrSize,
+				 const std::vector<BP5Base::MetaMetaInfoBlock> MMBlocks,
+				 const size_t MetaEncodeSize,
+                            const std::vector<uint64_t> WriterDataPositions)
+{
+    std::vector<char> ret;
+    size_t MMBlocksSize = MMBlocks.size();
+    size_t len = sizeof(node_contrib);
+    ret.resize(len);
+    auto NC = reinterpret_cast<node_contrib*>(ret.data());
+    NC->AttrHash = attrHash;
+    NC->AttrSize = attrSize;
+    NC->MMBCount = MMBlocks.size();
+    for (size_t i = 0; i < FIXED_MMB_SLOT_COUNT; i++)
+    {
+	std::memset(&NC->MMBArray[i].x[0], 0, sizeof(digest));
+	auto MM = &MMBlocks[i];
+	if (i < MMBlocks.size()) {
+	    std::memcpy(&NC->MMBArray[i].x[0], MM->MetaMetaID, MM->MetaMetaIDLen);
+	    size_t AlignedSize = ((MM->MetaMetaInfoLen + 7) & ~0x7);
+	    NC->MMBSizeArray[i] = AlignedSize;
+	} else {
+	    NC->MMBSizeArray[i] = 0;
+	}
+    }
+    NC->MetaEncodeSize = MetaEncodeSize;
+    NC->WriterDataPosition = WriterDataPositions[0];
+    return ret;
+}
+
+void BP5Helper::BreakdownFixedIncomingMInfo(const size_t NodeCount, const std::vector<char> RecvBuffer,
+    std::vector<size_t> &SecondRecvCounts, std::vector<uint64_t> &BcastInfo,
+    std::vector<uint64_t> &WriterDataPositions, std::vector<size_t> &MetaEncodeSize,
+    std::vector<size_t> &AttrSizes, std::vector<size_t> &MMBSizes, std::vector<digest> &MMBIDs)
+{
+    auto lf_digestZero = [](const digest D) -> bool {
+        return ((D.x[0] == 0) && (std::memcmp(&D.x[0], &D.x[1], (sizeof(D.x) - 1)) == 0));
+    };
+
+    std::set<digest> AttrSet;
+    std::set<digest> MMBSet;
+    MetaEncodeSize.resize(NodeCount);
+    WriterDataPositions.resize(NodeCount);
+    SecondRecvCounts.resize(NodeCount);
+    BcastInfo.resize(NodeCount);
+    AttrSizes.resize(NodeCount);
+    const node_contrib *NCArray = reinterpret_cast<const node_contrib*>(RecvBuffer.data());
+    for (size_t node = 0; node < NodeCount; node++)
+    {
+	const node_contrib * NC = &NCArray[node];
+        digest thisAttrHash;
+        bool needAttr = false;
+        size_t MMBlockCount;
+        size_t SecondRecvSize = 0;
+	thisAttrHash = NC->AttrHash;
+        size_t AttrSize = NC->AttrSize;
+        AttrSizes[node] = AttrSize;
+        if (AttrSize && !AttrSet.count(thisAttrHash))
+        {
+            AttrSet.insert(thisAttrHash);
+            needAttr = true;
+            size_t AlignedSize = ((AttrSize + 7) & ~0x7);
+            SecondRecvSize += AlignedSize;
+        }
+
+        size_t MMsNeeded = 0;
+        MMBlockCount = NC->MMBCount;
+	if (MMBlockCount > FIXED_MMB_SLOT_COUNT) {
+	    BcastInfo[0] = (size_t) -1;
+	    // we can't finish this, fallback
+	    return;
+	}
+        for (size_t block = 0; block < MMBlockCount; block++)
+        {
+            digest thisMMB = NC->MMBArray[block];
+            size_t thisMMBSize = NC->MMBSizeArray[block];
+            if (!MMBSet.count(thisMMB))
+            {
+                MMBSet.insert(thisMMB);
+                MMsNeeded += (1 << block);
+                size_t AlignedSize = ((thisMMBSize + 7) & ~0x7);
+                MMBSizes.push_back(AlignedSize);
+                MMBIDs.push_back(thisMMB);
+                SecondRecvSize += AlignedSize;
+            }
+        }
+        MetaEncodeSize[node] = NC->MetaEncodeSize;
+        size_t WDP = NC->WriterDataPosition;
+        WriterDataPositions[node] = WDP;
+        SecondRecvCounts[node] = SecondRecvSize;
+        BcastInfo[node] = needAttr ? ((uint64_t)1 << 63) : 0;
+        BcastInfo[node] |= MMsNeeded;
+    }
+}
+
 void BP5Helper::BreakdownIncomingMInfo(
     const std::vector<size_t> RecvCounts, const std::vector<char> RecvBuffer,
     std::vector<size_t> &SecondRecvCounts, std::vector<uint64_t> &BcastInfo,
@@ -185,6 +281,18 @@ void BP5Helper::BreakdownIncomingMData(const std::vector<size_t> &RecvCounts,
     }
 }
 
+/*
+ *  BP5AggregateInformation
+ *
+ *  Here we want to avoid some of the problems with prior approaches
+ *  to metadata aggregation by being more selective up front, possibly
+ *  at the cost of involving more collective operations but hopefully
+ *  with smaller data sizes.  In particular, in a first phase we're
+ *  only aggreggating MetaMetadata IDs (not bodies), and the hashes of
+ *  attribute blocks.  This allows us to avoid bringing duplicate
+ */
+
+
 void BP5Helper::BP5AggregateInformation(helper::Comm &mpiComm,
                                         std::vector<BP5Base::MetaMetaInfoBlock> &NewMetaMetaBlocks,
                                         std::vector<core::iovec> &AttributeEncodeBuffers,
@@ -203,35 +311,54 @@ void BP5Helper::BP5AggregateInformation(helper::Comm &mpiComm,
     }
     if (attrLen > 0)
         attrHash = HashOfBlock(AttributeEncodeBuffers[0].iov_base, attrLen);
-    auto myContrib = BuildNodeContrib(attrHash, attrLen, NewMetaMetaBlocks, MetaEncodeSize[0],
-                                      WriterDataPositions);
-    std::vector<size_t> RecvCounts = mpiComm.GatherValues(myContrib.size(), 0);
     std::vector<char> RecvBuffer;
     std::vector<uint64_t> BcastInfo;
     std::vector<size_t> SecondRecvCounts;
     std::vector<size_t> AttrSize;
     std::vector<size_t> MMBSizes;
     std::vector<digest> MMBIDs;
+    auto myFixedContrib = BuildFixedNodeContrib(attrHash, attrLen, NewMetaMetaBlocks, MetaEncodeSize[0],
+						WriterDataPositions);
+    bool NeedDynamic = false;
 
-    if (mpiComm.Rank() == 0)
-    {
-        uint64_t TotalSize = 0;
-        TotalSize = std::accumulate(RecvCounts.begin(), RecvCounts.end(), size_t(0));
-        RecvBuffer.resize(TotalSize);
-        mpiComm.GathervArrays(myContrib.data(), myContrib.size(), RecvCounts.data(),
-                              RecvCounts.size(), RecvBuffer.data(), 0);
-        BreakdownIncomingMInfo(RecvCounts, RecvBuffer, SecondRecvCounts, BcastInfo,
-                               WriterDataPositions, MetaEncodeSize, AttrSize, MMBSizes, MMBIDs);
+    if (mpiComm.Rank() == 0) {
+	RecvBuffer.resize(mpiComm.Size() * sizeof(node_contrib));
+	mpiComm.GatherArrays(myFixedContrib.data(), myFixedContrib.size(), RecvBuffer.data(), 0);
+        BreakdownFixedIncomingMInfo(mpiComm.Size(), RecvBuffer, SecondRecvCounts, BcastInfo,
+				    WriterDataPositions, MetaEncodeSize, AttrSize, MMBSizes, MMBIDs);
         mpiComm.Bcast(BcastInfo.data(), BcastInfo.size(), 0, "");
-    }
-    else
-    {
-        mpiComm.GathervArrays(myContrib.data(), myContrib.size(), RecvCounts.data(),
-                              RecvCounts.size(), RecvBuffer.data(), 0);
+    } else {
+	mpiComm.GatherArrays(myFixedContrib.data(), myFixedContrib.size(), RecvBuffer.data(), 0);
         BcastInfo.resize(mpiComm.Size());
         mpiComm.Bcast(BcastInfo.data(), BcastInfo.size(), 0, "");
-    }
+    }	
 
+    NeedDynamic = BcastInfo[0] == (size_t)-1;
+    if (NeedDynamic)
+    {
+	auto myContrib = BuildNodeContrib(attrHash, attrLen, NewMetaMetaBlocks, MetaEncodeSize[0],
+					  WriterDataPositions);
+	std::vector<size_t> RecvCounts = mpiComm.GatherValues(myContrib.size(), 0);
+	
+	if (mpiComm.Rank() == 0)
+	{
+	    uint64_t TotalSize = 0;
+	    TotalSize = std::accumulate(RecvCounts.begin(), RecvCounts.end(), size_t(0));
+	    RecvBuffer.resize(TotalSize);
+	    mpiComm.GathervArrays(myContrib.data(), myContrib.size(), RecvCounts.data(),
+				  RecvCounts.size(), RecvBuffer.data(), 0);
+	    BreakdownIncomingMInfo(RecvCounts, RecvBuffer, SecondRecvCounts, BcastInfo,
+				   WriterDataPositions, MetaEncodeSize, AttrSize, MMBSizes, MMBIDs);
+	    mpiComm.Bcast(BcastInfo.data(), BcastInfo.size(), 0, "");
+	}
+	else
+	{
+	    mpiComm.GathervArrays(myContrib.data(), myContrib.size(), RecvCounts.data(),
+				  RecvCounts.size(), RecvBuffer.data(), 0);
+	    BcastInfo.resize(mpiComm.Size());
+	    mpiComm.Bcast(BcastInfo.data(), BcastInfo.size(), 0, "");
+	}
+    }
     uint64_t MMASummary = std::accumulate(BcastInfo.begin(), BcastInfo.end(), size_t(0));
 
     if (MMASummary == 0)

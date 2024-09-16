@@ -753,7 +753,9 @@ void BP5Writer::EndStep()
                 assert(m_WriterDataPos.size() == static_cast<size_t>(m_Comm.Size()));
                 WriteMetaMetadata(UniqueMetaMetaBlocks);
                 m_LatestMetaDataPos = m_MetaDataPos;
+		m_Profiler.Start("ES_write_metadata");
                 m_LatestMetaDataSize = WriteMetadata(Metadata, AttributeBlocks);
+		m_Profiler.Stop("ES_write_metadata");
                 if (!m_Parameters.AsyncWrite)
                 {
                     WriteMetadataFileIndex(m_LatestMetaDataPos, m_LatestMetaDataSize);
@@ -796,8 +798,10 @@ void BP5Writer::EndStep()
                                  MetaEncodeSize.data(), MetaEncodeSize.size(),
                                  ContigMetadata.data(), 0);
 
+	    m_Profiler.Start("ES_write_metadata");
             m_LatestMetaDataSize =
                 NewWriteMetadata(ContigMetadata, MetaEncodeSize, AttributeBlocks);
+	    m_Profiler.Stop("ES_write_metadata");
             if (!m_Parameters.AsyncWrite)
             {
                 WriteMetadataFileIndex(m_LatestMetaDataPos, m_LatestMetaDataSize);
