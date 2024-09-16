@@ -170,6 +170,9 @@ private:
 
     uint64_t WriteMetadata(const std::vector<core::iovec> &MetaDataBlocks,
                            const std::vector<core::iovec> &AttributeBlocks);
+    uint64_t NewWriteMetadata(const std::vector<char> &ContigMetaData,
+                              const std::vector<size_t> &SizeVector,
+                              const std::vector<core::iovec> &AttributeBlocks);
 
     /** Write Data to disk, in an aggregator chain */
     void WriteData(format::BufferV *Data);
