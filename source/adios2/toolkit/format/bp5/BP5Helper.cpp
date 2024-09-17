@@ -281,6 +281,7 @@ void BP5Helper::BreakdownIncomingMData(const std::vector<size_t> &RecvCounts,
     }
 }
 
+// clang-format off
 /*
  *  BP5AggregateInformation
  *
@@ -289,9 +290,43 @@ void BP5Helper::BreakdownIncomingMData(const std::vector<size_t> &RecvCounts,
  *  at the cost of involving more collective operations but hopefully
  *  with smaller data sizes.  In particular, in a first phase we're
  *  only aggreggating MetaMetadata IDs (not bodies), and the hashes of
- *  attribute blocks.  This allows us to avoid bringing duplicate
+ *  attribute blocks.  This is has more back-and-forth than prior
+ *  methods, but it avoids moving duplicate attributes or metametadata
+ *  blocks.
+ *
+ *
+ * Basic protocol of this aggregation method:
+ * First 3 steps below occur in the helper function
+ * 1) Fixed-size (144 bytes) gather
+ *   This gathers AttrHash, AttrSize, MetaDataEncodeSize,
+ *   WriterDataPosition, MetaMetaBlockCount and first 4
+ *   MetaMetaBlockIDs
+ * 
+ * 2) Fixed-size (8 byte) bcast
+ *   This Broadcasts a bitmap of what attributes and metametablocks
+ *   are unique and required at rank 0
+ * 
+ * IF some rank has more than 4 MetaMetaBlocks, we know after the
+ * gather above and an indicator is included in the bcast so that all
+ * ranks fallback to a dynamic gather that includes all the
+ * metametablock IDs.  This should be VERY rare (only on the first
+ * timestep after multiple new structured types are defined).
+ *    <exception protocol if lots of unique metametadata>
+ *      2a) Fixed-size (8 byte) size gather
+ *      2b) Variable-sized gatherv
+ *      2c) Fixed-size (8 byte) bcast
+ * 
+ * IF there are new Attribute blocks or new MetaMetaBlocks Step 3
+ * gathers them.  This may never happen after timestep 0
+ * 
+ * 3) Variable-size gatherv to gather new Attrs or MetaMetaBlocks
+ * 
+ * The last step (4) occurs in the engine, not the helper function,
+ * but size information is provided by the helper
+ * 4) variable sized gather of the actual metadata blocks
+ * 
  */
-
+// clang-format on
 
 void BP5Helper::BP5AggregateInformation(helper::Comm &mpiComm,
                                         std::vector<BP5Base::MetaMetaInfoBlock> &NewMetaMetaBlocks,
@@ -399,20 +434,27 @@ void BP5Helper::BP5AggregateInformation(helper::Comm &mpiComm,
             }
         }
     }
+    // per above, is 8-byte aligned
+    uint64_t AlignedContribCount = myMMAcontrib.size() / 8;
+    uint64_t *AlignedContrib = reinterpret_cast<uint64_t*>(myMMAcontrib.data());
+    uint64_t TotalSize =
+            std::accumulate(SecondRecvCounts.begin(), SecondRecvCounts.end(), size_t(0));
+    uint64_t AlignedTotalSize = TotalSize / 8;
     if (mpiComm.Rank() == 0)
     {
         uint64_t TotalSize =
             std::accumulate(SecondRecvCounts.begin(), SecondRecvCounts.end(), size_t(0));
         std::vector<char> IncomingMMA(TotalSize);
-        mpiComm.GathervArrays(myMMAcontrib.data(), myMMAcontrib.size(), SecondRecvCounts.data(),
-                              SecondRecvCounts.size(), IncomingMMA.data(), 0);
+	uint64_t *AlignedIncomingData = reinterpret_cast<uint64_t*>(IncomingMMA.data());
+        mpiComm.GathervArrays(AlignedContrib, AlignedContribCount, SecondRecvCounts.data(),
+                              AlignedTotalSize, AlignedIncomingData, 0);
         BreakdownIncomingMData(SecondRecvCounts, BcastInfo, IncomingMMA, NewMetaMetaBlocks,
                                AttributeEncodeBuffers, AttrSize, MMBSizes, MMBIDs);
     }
     else
     {
-        mpiComm.GathervArrays(myMMAcontrib.data(), myMMAcontrib.size(), SecondRecvCounts.data(),
-                              SecondRecvCounts.size(), (char *)nullptr, 0);
+        mpiComm.GathervArrays(AlignedContrib, AlignedContribCount, SecondRecvCounts.data(),
+                              AlignedTotalSize, (uint64_t *)nullptr, 0);
     }
 }
 
