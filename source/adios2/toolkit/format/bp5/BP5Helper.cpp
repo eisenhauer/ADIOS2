@@ -440,14 +440,14 @@ void BP5Helper::BP5AggregateInformation(helper::Comm &mpiComm,
     uint64_t TotalSize =
             std::accumulate(SecondRecvCounts.begin(), SecondRecvCounts.end(), size_t(0));
     uint64_t AlignedTotalSize = TotalSize / 8;
+    auto AlignedCounts = SecondRecvCounts;
+    for (auto &C : AlignedCounts) C /=8;
     if (mpiComm.Rank() == 0)
     {
-        uint64_t TotalSize =
-            std::accumulate(SecondRecvCounts.begin(), SecondRecvCounts.end(), size_t(0));
         std::vector<char> IncomingMMA(TotalSize);
 	uint64_t *AlignedIncomingData = reinterpret_cast<uint64_t*>(IncomingMMA.data());
         mpiComm.GathervArrays(AlignedContrib, AlignedContribCount, SecondRecvCounts.data(),
-                              AlignedTotalSize, AlignedIncomingData, 0);
+                              SecondRecvCounts.size(), AlignedIncomingData, 0);
         BreakdownIncomingMData(SecondRecvCounts, BcastInfo, IncomingMMA, NewMetaMetaBlocks,
                                AttributeEncodeBuffers, AttrSize, MMBSizes, MMBIDs);
     }

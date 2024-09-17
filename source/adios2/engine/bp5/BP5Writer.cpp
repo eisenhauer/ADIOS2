@@ -618,43 +618,129 @@ void BP5Writer::ComputeDerivedVariables()
 }
 #endif
 
-void BP5Writer::EndStep()
+void BP5Writer::SelectiveAggregationMetadata(format::BP5Serializer::TimestepInfo TSInfo)
 {
-#ifdef ADIOS2_HAVE_DERIVED_VARIABLE
-    ComputeDerivedVariables();
-#endif
-    m_BetweenStepPairs = false;
-    PERFSTUBS_SCOPED_TIMER("BP5Writer::EndStep");
-    m_Profiler.Start("ES");
+        std::vector<format::BP5Base::MetaMetaInfoBlock> UniqueMetaMetaBlocks;
+        std::vector<uint64_t> DataSizes;
+        std::vector<core::iovec> AttributeBlocks;
+        std::vector<size_t> MetaEncodeSize;
+        m_WriterDataPos.resize(0);
+        m_WriterDataPos.push_back(m_StartDataPos);
+        UniqueMetaMetaBlocks = TSInfo.NewMetaMetaBlocks;
+        if (TSInfo.AttributeEncodeBuffer)
+            AttributeBlocks.push_back(
+                {TSInfo.AttributeEncodeBuffer->Data(), TSInfo.AttributeEncodeBuffer->m_FixedSize});
+        size_t AlignedMetadataSize = (TSInfo.MetaEncodeBuffer->m_FixedSize + 7) & ~0x7;
+        MetaEncodeSize.push_back(AlignedMetadataSize);
 
-    m_Profiler.Start("ES_close");
-    MarshalAttributes();
+        m_Profiler.Start("ES_aggregate_info");
+        BP5Helper::BP5AggregateInformation(m_Comm, UniqueMetaMetaBlocks, AttributeBlocks,
+                                           MetaEncodeSize, m_WriterDataPos);
 
-    // true: advances step
-    auto TSInfo = m_BP5Serializer.CloseTimestep((int)m_WriterStep,
-                                                m_Parameters.AsyncWrite || m_Parameters.DirectIO);
+        m_Profiler.Stop("ES_aggregate_info");
+        m_Profiler.Start("ES_gather_write_meta");
+        if (m_Comm.Rank() == 0)
+        {
+            size_t MetadataTotalSize =
+                std::accumulate(MetaEncodeSize.begin(), MetaEncodeSize.end(), size_t(0));
+            assert(m_WriterDataPos.size() == static_cast<size_t>(m_Comm.Size()));
+            WriteMetaMetadata(UniqueMetaMetaBlocks);
+            m_LatestMetaDataPos = m_MetaDataPos;
+            std::vector<char> ContigMetadata;
+            ContigMetadata.resize(MetadataTotalSize);
+            m_Comm.GathervArrays(TSInfo.MetaEncodeBuffer->Data(), AlignedMetadataSize,
+                                 MetaEncodeSize.data(), MetaEncodeSize.size(),
+                                 ContigMetadata.data(), 0);
 
-    /* TSInfo includes NewMetaMetaBlocks, the MetaEncodeBuffer, the
-     * AttributeEncodeBuffer and the data encode Vector */
+	    m_Profiler.Start("ES_write_metadata");
+            m_LatestMetaDataSize =
+                NewWriteMetadata(ContigMetadata, MetaEncodeSize, AttributeBlocks);
+	    m_Profiler.Stop("ES_write_metadata");
+            if (!m_Parameters.AsyncWrite)
+            {
+                WriteMetadataFileIndex(m_LatestMetaDataPos, m_LatestMetaDataSize);
+            }
+        }
+        else
+        {
+            m_Comm.GathervArrays(TSInfo.MetaEncodeBuffer->Data(), AlignedMetadataSize,
+                                 MetaEncodeSize.data(), MetaEncodeSize.size(), (char *)nullptr, 0);
+        }
+        m_Profiler.Stop("ES_gather_write_meta");
+}
 
-    m_ThisTimestepDataSize += TSInfo.DataBuffer->Size();
-    m_Profiler.Stop("ES_close");
+void BP5Writer::SimpleAggregationMetadata(format::BP5Serializer::TimestepInfo TSInfo)
+{
+        /*
+         * one-step metadata aggregation
+         */
+        m_Profiler.Start("ES_meta1");
+        std::vector<char> MetaBuffer;
+        core::iovec m{TSInfo.MetaEncodeBuffer->Data(), TSInfo.MetaEncodeBuffer->m_FixedSize};
+        core::iovec a{nullptr, 0};
+        if (TSInfo.AttributeEncodeBuffer)
+        {
+            a = {TSInfo.AttributeEncodeBuffer->Data(), TSInfo.AttributeEncodeBuffer->m_FixedSize};
+        }
+        MetaBuffer = m_BP5Serializer.CopyMetadataToContiguous(
+            TSInfo.NewMetaMetaBlocks, {m}, {a}, {m_ThisTimestepDataSize}, {m_StartDataPos});
 
-    m_Profiler.Start("ES_AWD");
-    // TSInfo destructor would delete the DataBuffer so we need to save it
-    // for async IO and let the writer free it up when not needed anymore
-    m_AsyncWriteLock.lock();
-    m_flagRush = false;
-    m_AsyncWriteLock.unlock();
+	std::vector<char> RecvBuffer;
+	std::vector<char> *buf;
+	std::vector<size_t> RecvCounts;
+	size_t LocalSize = MetaBuffer.size();
+	if (m_Comm.Size() > 1)
+        {
+	    m_Profiler.Start("ES_meta2_gather");
+	    RecvCounts = m_CommMetadataAggregators.GatherValues(LocalSize, 0);
+	    if (m_CommMetadataAggregators.Rank() == 0)
+            {
+		uint64_t TotalSize = 0;
+		for (auto &n : RecvCounts)
+		    TotalSize += n;
+		RecvBuffer.resize(TotalSize);
+		/*std::cout << "MD Lvl-2: rank " << m_Comm.Rank() << " gather "
+		  << TotalSize << " bytes from aggregator group"
+		  << std::endl;*/
+	    }
 
-    // WriteData will free TSInfo.DataBuffer
-    WriteData(TSInfo.DataBuffer);
-    TSInfo.DataBuffer = NULL;
+	    m_CommMetadataAggregators.GathervArrays(MetaBuffer.data(), LocalSize,
+						    RecvCounts.data(), RecvCounts.size(),
+						    RecvBuffer.data(), 0);
+	    buf = &RecvBuffer;
+	    m_Profiler.Stop("ES_meta2_gather");
+	}
+	else
+        {
+	    buf = &MetaBuffer;
+	    RecvCounts.push_back(LocalSize);
+	}
 
-    m_Profiler.Stop("ES_AWD");
+	if (m_Comm.Rank() == 0)
+        {
+	    std::vector<format::BP5Base::MetaMetaInfoBlock> UniqueMetaMetaBlocks;
+	    std::vector<uint64_t> DataSizes;
+	    std::vector<core::iovec> AttributeBlocks;
+	    m_WriterDataPos.resize(0);
+	    auto Metadata = m_BP5Serializer.BreakoutContiguousMetadata(
+								       *buf, RecvCounts, UniqueMetaMetaBlocks, AttributeBlocks, DataSizes,
+								       m_WriterDataPos);
+	    assert(m_WriterDataPos.size() == static_cast<size_t>(m_Comm.Size()));
+	    WriteMetaMetadata(UniqueMetaMetaBlocks);
+	    m_LatestMetaDataPos = m_MetaDataPos;
+	    m_Profiler.Start("ES_write_metadata");
+	    m_LatestMetaDataSize = WriteMetadata(Metadata, AttributeBlocks);
+	    m_Profiler.Stop("ES_write_metadata");
+	    if (!m_Parameters.AsyncWrite)
+            {
+		WriteMetadataFileIndex(m_LatestMetaDataPos, m_LatestMetaDataSize);
+	    }
+	}
+        m_Profiler.Stop("ES_meta2");
+}
 
-    if (getenv("OLDMETADATA"))
-    {
+void BP5Writer::TwoLevelAggregationMetadata(format::BP5Serializer::TimestepInfo TSInfo)
+{
         /*
          * Two-step metadata aggregation
          */
@@ -763,57 +849,53 @@ void BP5Writer::EndStep()
             }
         } // level 2
         m_Profiler.Stop("ES_meta2");
+}    
+
+void BP5Writer::EndStep()
+{
+#ifdef ADIOS2_HAVE_DERIVED_VARIABLE
+    ComputeDerivedVariables();
+#endif
+    m_BetweenStepPairs = false;
+    PERFSTUBS_SCOPED_TIMER("BP5Writer::EndStep");
+    m_Profiler.Start("ES");
+
+    m_Profiler.Start("ES_close");
+    MarshalAttributes();
+
+    // true: advances step
+    auto TSInfo = m_BP5Serializer.CloseTimestep((int)m_WriterStep,
+                                                m_Parameters.AsyncWrite || m_Parameters.DirectIO);
+
+    /* TSInfo includes NewMetaMetaBlocks, the MetaEncodeBuffer, the
+     * AttributeEncodeBuffer and the data encode Vector */
+
+    m_ThisTimestepDataSize += TSInfo.DataBuffer->Size();
+    m_Profiler.Stop("ES_close");
+
+    m_Profiler.Start("ES_AWD");
+    // TSInfo destructor would delete the DataBuffer so we need to save it
+    // for async IO and let the writer free it up when not needed anymore
+    m_AsyncWriteLock.lock();
+    m_flagRush = false;
+    m_AsyncWriteLock.unlock();
+
+    // WriteData will free TSInfo.DataBuffer
+    WriteData(TSInfo.DataBuffer);
+    TSInfo.DataBuffer = NULL;
+
+    m_Profiler.Stop("ES_AWD");
+
+    if (getenv("SIMPLEMETADATA"))
+    {
+	TwoLevelAggregationMetadata(TSInfo);
+    } else if (getenv("OLDMETADATA"))
+    {
+	TwoLevelAggregationMetadata(TSInfo);
     }
     else
     {
-        std::vector<format::BP5Base::MetaMetaInfoBlock> UniqueMetaMetaBlocks;
-        std::vector<uint64_t> DataSizes;
-        std::vector<core::iovec> AttributeBlocks;
-        std::vector<size_t> MetaEncodeSize;
-        m_WriterDataPos.resize(0);
-        m_WriterDataPos.push_back(m_StartDataPos);
-        UniqueMetaMetaBlocks = TSInfo.NewMetaMetaBlocks;
-        if (TSInfo.AttributeEncodeBuffer)
-            AttributeBlocks.push_back(
-                {TSInfo.AttributeEncodeBuffer->Data(), TSInfo.AttributeEncodeBuffer->m_FixedSize});
-        size_t AlignedMetadataSize = (TSInfo.MetaEncodeBuffer->m_FixedSize + 7) & ~0x7;
-        MetaEncodeSize.push_back(AlignedMetadataSize);
-
-        m_Profiler.Start("ES_aggregate_info");
-        BP5Helper::BP5AggregateInformation(m_Comm, UniqueMetaMetaBlocks, AttributeBlocks,
-                                           MetaEncodeSize, m_WriterDataPos);
-
-        m_Profiler.Stop("ES_aggregate_info");
-        m_Profiler.Start("ES_gather_write_meta");
-        if (m_Comm.Rank() == 0)
-        {
-            size_t MetadataTotalSize =
-                std::accumulate(MetaEncodeSize.begin(), MetaEncodeSize.end(), size_t(0));
-            assert(m_WriterDataPos.size() == static_cast<size_t>(m_Comm.Size()));
-            WriteMetaMetadata(UniqueMetaMetaBlocks);
-            m_LatestMetaDataPos = m_MetaDataPos;
-            std::vector<char> ContigMetadata;
-            ContigMetadata.resize(MetadataTotalSize);
-            m_Comm.GathervArrays(TSInfo.MetaEncodeBuffer->Data(), AlignedMetadataSize,
-                                 MetaEncodeSize.data(), MetaEncodeSize.size(),
-                                 ContigMetadata.data(), 0);
-
-	    m_Profiler.Start("ES_write_metadata");
-            m_LatestMetaDataSize =
-                NewWriteMetadata(ContigMetadata, MetaEncodeSize, AttributeBlocks);
-	    m_Profiler.Stop("ES_write_metadata");
-            if (!m_Parameters.AsyncWrite)
-            {
-                WriteMetadataFileIndex(m_LatestMetaDataPos, m_LatestMetaDataSize);
-            }
-            // stuff
-        }
-        else
-        {
-            m_Comm.GathervArrays(TSInfo.MetaEncodeBuffer->Data(), AlignedMetadataSize,
-                                 MetaEncodeSize.data(), MetaEncodeSize.size(), (char *)nullptr, 0);
-        }
-        m_Profiler.Stop("ES_gather_write_meta");
+	SelectiveAggregationMetadata(TSInfo);
     }
 
     if (m_Parameters.AsyncWrite)
