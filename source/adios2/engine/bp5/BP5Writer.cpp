@@ -674,7 +674,7 @@ void BP5Writer::SimpleAggregationMetadata(format::BP5Serializer::TimestepInfo TS
         /*
          * one-step metadata aggregation
          */
-        m_Profiler.Start("ES_meta1");
+        m_Profiler.Start("ES_simple_meta");
         std::vector<char> MetaBuffer;
         core::iovec m{TSInfo.MetaEncodeBuffer->Data(), TSInfo.MetaEncodeBuffer->m_FixedSize};
         core::iovec a{nullptr, 0};
@@ -691,7 +691,7 @@ void BP5Writer::SimpleAggregationMetadata(format::BP5Serializer::TimestepInfo TS
 	size_t LocalSize = MetaBuffer.size();
 	if (m_Comm.Size() > 1)
         {
-	    m_Profiler.Start("ES_meta2_gather");
+	    m_Profiler.Start("ES_simple_gather");
 	    RecvCounts = m_CommMetadataAggregators.GatherValues(LocalSize, 0);
 	    if (m_CommMetadataAggregators.Rank() == 0)
             {
@@ -708,7 +708,7 @@ void BP5Writer::SimpleAggregationMetadata(format::BP5Serializer::TimestepInfo TS
 						    RecvCounts.data(), RecvCounts.size(),
 						    RecvBuffer.data(), 0);
 	    buf = &RecvBuffer;
-	    m_Profiler.Stop("ES_meta2_gather");
+	    m_Profiler.Stop("ES_simple_gather");
 	}
 	else
         {
@@ -736,7 +736,7 @@ void BP5Writer::SimpleAggregationMetadata(format::BP5Serializer::TimestepInfo TS
 		WriteMetadataFileIndex(m_LatestMetaDataPos, m_LatestMetaDataSize);
 	    }
 	}
-        m_Profiler.Stop("ES_meta2");
+        m_Profiler.Stop("ES_simple_meta");
 }
 
 void BP5Writer::TwoLevelAggregationMetadata(format::BP5Serializer::TimestepInfo TSInfo)
