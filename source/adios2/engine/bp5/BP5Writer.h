@@ -174,6 +174,10 @@ private:
                               const std::vector<size_t> &SizeVector,
                               const std::vector<core::iovec> &AttributeBlocks);
 
+    void SelectiveAggregationMetadata(format::BP5Serializer::TimestepInfo TSInfo);
+    void TwoLevelAggregationMetadata(format::BP5Serializer::TimestepInfo TSInfo);
+    void SimpleAggregationMetadata(format::BP5Serializer::TimestepInfo TSInfo);
+
     /** Write Data to disk, in an aggregator chain */
     void WriteData(format::BufferV *Data);
     void WriteData_EveryoneWrites(format::BufferV *Data, bool SerializedWriters);

@@ -25,9 +25,9 @@ std::string engine = "sst";
 adios2::Params engineParams = {}; // parsed from command line
 
 int NSteps = 10;
-int NumVars = 100;
-int NumArrays = 100;
-int NumAttrs = 100;
+int NumVars = 10;
+int NumArrays = 10;
+int NumAttrs = 10;
 int NumBlocks = 1;
 int ReaderDelay = 0;
 int WriterSize;
