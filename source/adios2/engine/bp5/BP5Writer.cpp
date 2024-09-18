@@ -645,6 +645,7 @@ void BP5Writer::SelectiveAggregationMetadata(format::BP5Serializer::TimestepInfo
                 std::accumulate(MetaEncodeSize.begin(), MetaEncodeSize.end(), size_t(0));
             assert(m_WriterDataPos.size() == static_cast<size_t>(m_Comm.Size()));
             WriteMetaMetadata(UniqueMetaMetaBlocks);
+	    for (auto &mm : UniqueMetaMetaBlocks) {    free((void*)mm.MetaMetaInfo);    free((void*)mm.MetaMetaID); }
             m_LatestMetaDataPos = m_MetaDataPos;
             std::vector<char> ContigMetadata;
             ContigMetadata.resize(MetadataTotalSize);
@@ -655,7 +656,9 @@ void BP5Writer::SelectiveAggregationMetadata(format::BP5Serializer::TimestepInfo
 	    m_Profiler.Start("ES_write_metadata");
             m_LatestMetaDataSize =
                 NewWriteMetadata(ContigMetadata, MetaEncodeSize, AttributeBlocks);
+	    
 	    m_Profiler.Stop("ES_write_metadata");
+	    for (auto &a : AttributeBlocks)     free((void*)a.iov_base);
             if (!m_Parameters.AsyncWrite)
             {
                 WriteMetadataFileIndex(m_LatestMetaDataPos, m_LatestMetaDataSize);
