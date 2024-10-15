@@ -28,6 +28,7 @@ int NSteps = 10;
 int NumVars = 10;
 int NumArrays = 10;
 int NumAttrs = 10;
+bool AttributesEverywhere = false;
 int NumBlocks = 1;
 int ReaderDelay = 0;
 int WriterSize;
@@ -149,6 +150,10 @@ static void ParseArgs(int argc, char **argv)
                 std::cerr << "Invalid number for number of attrs" << argv[1] << '\n';
             argv++;
             argc--;
+        }
+        else if (std::string(argv[1]) == "--attributes_everywhere")
+        {
+	    AttributesEverywhere = true;
         }
         else if (std::string(argv[1]) == "--num_blocks")
         {
@@ -301,6 +306,9 @@ void DoWriter(adios2::Params writerParams)
             std::string varname = "Variable" + std::to_string(i);
             Floats[i] = io.DefineVariable<float>(varname);
         }
+    }
+    if ((mpiRank == 0) || AttributesEverywhere)
+    {
         for (int i = 0; i < NumAttrs; i++)
         {
             std::string varname = "Attribute" + std::to_string(i);

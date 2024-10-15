@@ -8,6 +8,7 @@
 #include "BP5Helper.h"
 #include "adios2/helper/adiosFunctions.h"
 #include <adios2sys/MD5.h> // Include the MD5 header
+#include <iomanip> // put_time
 
 #include "fm.h"
 
@@ -329,6 +330,7 @@ void BP5Helper::BreakdownIncomingMData(const std::vector<size_t> &RecvCounts,
 // clang-format on
 
 void BP5Helper::BP5AggregateInformation(helper::Comm &mpiComm,
+					adios2::profiling::JSONProfiler &Profiler,
                                         std::vector<BP5Base::MetaMetaInfoBlock> &NewMetaMetaBlocks,
                                         std::vector<core::iovec> &AttributeEncodeBuffers,
                                         std::vector<size_t> &MetaEncodeSize,
@@ -358,19 +360,39 @@ void BP5Helper::BP5AggregateInformation(helper::Comm &mpiComm,
 
     if (mpiComm.Rank() == 0) {
 	RecvBuffer.resize(mpiComm.Size() * sizeof(node_contrib));
+	std::time_t t = std::time(nullptr);
+	std::cout<< "start first gather arrays [" << std::put_time(std::localtime(&t), "%F %T %Z") << "] " << std::endl;
+	Profiler.Start("FixedMetaInfoGather");
 	mpiComm.GatherArrays(myFixedContrib.data(), myFixedContrib.size(), RecvBuffer.data(), 0);
+	Profiler.Stop("FixedMetaInfoGather");
+	t = std::time(nullptr);
+	std::cout<< "end first gather arrays [" << std::put_time(std::localtime(&t), "%F %T %Z") << "] " << std::endl;
         BreakdownFixedIncomingMInfo(mpiComm.Size(), RecvBuffer, SecondRecvCounts, BcastInfo,
 				    WriterDataPositions, MetaEncodeSize, AttrSize, MMBSizes, MMBIDs);
+	t = std::time(nullptr);
+	std::cout<< "start bcst [" << std::put_time(std::localtime(&t), "%F %T %Z") << "] " << std::endl;
+	Profiler.Start("MetaInfoBcast");
         mpiComm.Bcast(BcastInfo.data(), BcastInfo.size(), 0, "");
+	Profiler.Stop("MetaInfoBcast");
+	t = std::time(nullptr);
+	std::cout<< "end bcst [" << std::put_time(std::localtime(&t), "%F %T %Z") << "] " << std::endl;
     } else {
+	Profiler.Start("FixedMetaInfoGather");
 	mpiComm.GatherArrays(myFixedContrib.data(), myFixedContrib.size(), RecvBuffer.data(), 0);
+	Profiler.Stop("FixedMetaInfoGather");
         BcastInfo.resize(mpiComm.Size());
+	Profiler.Start("MetaInfoBcast");
         mpiComm.Bcast(BcastInfo.data(), BcastInfo.size(), 0, "");
+	Profiler.Stop("MetaInfoBcast");
     }	
 
     NeedDynamic = BcastInfo[0] == (size_t)-1;
     if (NeedDynamic)
     {
+        /*
+         * This portion only happens if some node has more than FIXED_MBB_SLOT_COUNT metameta blocks
+	 * which should be almost never in practice.
+	 */
 	auto myContrib = BuildNodeContrib(attrHash, attrLen, NewMetaMetaBlocks, MetaEncodeSize[0],
 					  WriterDataPositions);
 	std::vector<size_t> RecvCounts = mpiComm.GatherValues(myContrib.size(), 0);
@@ -378,13 +400,19 @@ void BP5Helper::BP5AggregateInformation(helper::Comm &mpiComm,
 	if (mpiComm.Rank() == 0)
 	{
 	    uint64_t TotalSize = 0;
+	    std::time_t t = std::time(nullptr);
+	    std::cout<< "in dynamic  values [" << std::put_time(std::localtime(&t), "%F %T %Z") << "] " << std::endl;
 	    TotalSize = std::accumulate(RecvCounts.begin(), RecvCounts.end(), size_t(0));
 	    RecvBuffer.resize(TotalSize);
 	    mpiComm.GathervArrays(myContrib.data(), myContrib.size(), RecvCounts.data(),
 				  RecvCounts.size(), RecvBuffer.data(), 0);
+	    t = std::time(nullptr);
+	    std::cout<< "enddynamic gather arrayss [" << std::put_time(std::localtime(&t), "%F %T %Z") << "] " << std::endl;
 	    BreakdownIncomingMInfo(RecvCounts, RecvBuffer, SecondRecvCounts, BcastInfo,
 				   WriterDataPositions, MetaEncodeSize, AttrSize, MMBSizes, MMBIDs);
 	    mpiComm.Bcast(BcastInfo.data(), BcastInfo.size(), 0, "");
+	    t = std::time(nullptr);
+	    std::cout<< "enddynamic bcase [" << std::put_time(std::localtime(&t), "%F %T %Z") << "] " << std::endl;
 	}
 	else
 	{
@@ -396,11 +424,15 @@ void BP5Helper::BP5AggregateInformation(helper::Comm &mpiComm,
     }
     uint64_t MMASummary = std::accumulate(BcastInfo.begin(), BcastInfo.end(), size_t(0));
 
-    if (MMASummary == 0)
+    if (MMASummary == 0) {
         // Nobody has anything new to contribute WRT attributes or metametadata
         // All mpiranks have the same info and will make the same decision
-        return;
-
+        if (mpiComm.Rank() == 0) {
+	    std::time_t t = std::time(nullptr);
+	    std::cout<< "aggregate shortciruit [" << std::put_time(std::localtime(&t), "%F %T %Z") << "] " << std::endl;
+	}
+	return;
+    }
     // assemble my contribution to mm and attr gather
     std::vector<char> myMMAcontrib;
     size_t pos = 0;
@@ -446,15 +478,23 @@ void BP5Helper::BP5AggregateInformation(helper::Comm &mpiComm,
     {
         std::vector<char> IncomingMMA(TotalSize);
 	uint64_t *AlignedIncomingData = reinterpret_cast<uint64_t*>(IncomingMMA.data());
-        mpiComm.GathervArrays(AlignedContrib, AlignedContribCount, SecondRecvCounts.data(),
-                              SecondRecvCounts.size(), AlignedIncomingData, 0);
+	std::time_t t = std::time(nullptr);
+	std::cout<< "begin MMA gather [" << std::put_time(std::localtime(&t), "%F %T %Z") << "] " << std::endl;
+	Profiler.Start("SelectMetaInfoGather");
+        mpiComm.GathervArrays(AlignedContrib, AlignedContribCount, AlignedCounts.data(),
+                              AlignedCounts.size(), AlignedIncomingData, 0);
+	Profiler.Stop("SelectMetaInfoGather");
+	t = std::time(nullptr);
+	std::cout<< "endn MMA gather [" << std::put_time(std::localtime(&t), "%F %T %Z") << "] " << std::endl;
         BreakdownIncomingMData(SecondRecvCounts, BcastInfo, IncomingMMA, NewMetaMetaBlocks,
                                AttributeEncodeBuffers, AttrSize, MMBSizes, MMBIDs);
     }
     else
     {
-        mpiComm.GathervArrays(AlignedContrib, AlignedContribCount, SecondRecvCounts.data(),
-                              AlignedTotalSize, (uint64_t *)nullptr, 0);
+	Profiler.Start("SelectMetaInfoGather");
+        mpiComm.GathervArrays(AlignedContrib, AlignedContribCount, AlignedCounts.data(),
+                              AlignedCounts.size(), (uint64_t *)nullptr, 0);
+	Profiler.Stop("SelectMetaInfoGather");
     }
 }
 

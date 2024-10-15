@@ -11,6 +11,7 @@
 #include "BP5Base.h"
 #include "adios2/core/Attribute.h"
 #include "adios2/core/CoreTypes.h"
+#include "adios2/toolkit/profiling/iochrono/IOChrono.h"
 #ifdef _WIN32
 #pragma warning(disable : 4250)
 #endif
@@ -24,6 +25,7 @@ class BP5Helper : virtual public BP5Base
 {
 public:
     static void BP5AggregateInformation(helper::Comm &mpiComm,
+					adios2::profiling::JSONProfiler &Profiler,
                                         std::vector<BP5Base::MetaMetaInfoBlock> &NewMetaMetaBlocks,
                                         std::vector<core::iovec> &AttributeEncodeBuffers,
                                         std::vector<size_t> &MetaEncodeSize,

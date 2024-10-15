@@ -184,6 +184,7 @@ uint64_t BP5Writer::WriteMetadata(const std::vector<core::iovec> &MetaDataBlocks
     m_FileMetadataManager.WriteFiles((char *)AttrSizeVector.data(),
                                      sizeof(uint64_t) * AttrSizeVector.size());
     MetaDataSize += sizeof(uint64_t) * AttrSizeVector.size();
+    m_Profiler.Start("MetadataBlockWrite");
     for (auto &b : MetaDataBlocks)
     {
         if (!b.iov_base)
@@ -191,6 +192,7 @@ uint64_t BP5Writer::WriteMetadata(const std::vector<core::iovec> &MetaDataBlocks
         m_FileMetadataManager.WriteFiles((char *)b.iov_base, b.iov_len);
         MetaDataSize += b.iov_len;
     }
+    m_Profiler.Stop("MetadataBlockWrite");
 
     for (auto &b : AttributeBlocks)
     {
@@ -238,7 +240,9 @@ uint64_t BP5Writer::NewWriteMetadata(const std::vector<char> &ContigMetaData,
     m_FileMetadataManager.WriteFiles((char *)AttrSizeVector.data(),
                                      sizeof(uint64_t) * AttrSizeVector.size());
     MetaDataSize += sizeof(uint64_t) * AttrSizeVector.size();
+    m_Profiler.Start("MetadataBlockWrite");
     m_FileMetadataManager.WriteFiles(ContigMetaData.data(), ContigMetaData.size());
+    m_Profiler.Stop("MetadataBlockWrite");
     MetaDataSize += ContigMetaData.size();
 
     for (auto &b : AttributeBlocks)
@@ -634,13 +638,14 @@ void BP5Writer::SelectiveAggregationMetadata(format::BP5Serializer::TimestepInfo
         MetaEncodeSize.push_back(AlignedMetadataSize);
 
         m_Profiler.Start("ES_aggregate_info");
-        BP5Helper::BP5AggregateInformation(m_Comm, UniqueMetaMetaBlocks, AttributeBlocks,
+        BP5Helper::BP5AggregateInformation(m_Comm, m_Profiler, UniqueMetaMetaBlocks, AttributeBlocks,
                                            MetaEncodeSize, m_WriterDataPos);
 
         m_Profiler.Stop("ES_aggregate_info");
         m_Profiler.Start("ES_gather_write_meta");
         if (m_Comm.Rank() == 0)
         {
+	    m_Profiler.Start("ES_AGG1");
             size_t MetadataTotalSize =
                 std::accumulate(MetaEncodeSize.begin(), MetaEncodeSize.end(), size_t(0));
             assert(m_WriterDataPos.size() == static_cast<size_t>(m_Comm.Size()));
@@ -649,10 +654,20 @@ void BP5Writer::SelectiveAggregationMetadata(format::BP5Serializer::TimestepInfo
             m_LatestMetaDataPos = m_MetaDataPos;
             std::vector<char> ContigMetadata;
             ContigMetadata.resize(MetadataTotalSize);
-            m_Comm.GathervArrays(TSInfo.MetaEncodeBuffer->Data(), AlignedMetadataSize,
-                                 MetaEncodeSize.data(), MetaEncodeSize.size(),
-                                 ContigMetadata.data(), 0);
+	    std::time_t t = std::time(nullptr);
+	    std::cout<< "begin metadata gather [" << std::put_time(std::localtime(&t), "%F %T %Z") << "] " << "aligned size " << AlignedMetadataSize << " TotalSize " << MetadataTotalSize <<
+	      std::endl;
+	    auto AlignedCounts = MetaEncodeSize;
+	    for (auto &C : AlignedCounts) C /=8;
+	    m_Profiler.Stop("ES_AGG1");
+	    m_Profiler.Start("ES_GatherMetadataBlocks");
+            m_Comm.GathervArrays((uint64_t*)TSInfo.MetaEncodeBuffer->Data(), AlignedMetadataSize/8,
+                                 AlignedCounts.data(), AlignedCounts.size(),
+                                 (uint64_t*)ContigMetadata.data(), 0);
 
+	    m_Profiler.Stop("ES_GatherMetadataBlocks");
+	    t = std::time(nullptr);
+	    std::cout<< "end metadata gather [" << std::put_time(std::localtime(&t), "%F %T %Z") << "] " << std::endl;
 	    m_Profiler.Start("ES_write_metadata");
             m_LatestMetaDataSize =
                 NewWriteMetadata(ContigMetadata, MetaEncodeSize, AttributeBlocks);
@@ -695,10 +710,10 @@ void BP5Writer::SimpleAggregationMetadata(format::BP5Serializer::TimestepInfo TS
 	if (m_Comm.Size() > 1)
         {
 	    m_Profiler.Start("ES_simple_gather");
-	    RecvCounts = m_CommMetadataAggregators.GatherValues(LocalSize, 0);
-	    if (m_CommMetadataAggregators.Rank() == 0)
+	    RecvCounts = m_Comm.GatherValues(LocalSize, 0);
+	    uint64_t TotalSize = 0;
+	    if (m_Comm.Rank() == 0)
             {
-		uint64_t TotalSize = 0;
 		for (auto &n : RecvCounts)
 		    TotalSize += n;
 		RecvBuffer.resize(TotalSize);
@@ -707,9 +722,16 @@ void BP5Writer::SimpleAggregationMetadata(format::BP5Serializer::TimestepInfo TS
 		  << std::endl;*/
 	    }
 
-	    m_CommMetadataAggregators.GathervArrays(MetaBuffer.data(), LocalSize,
+	    std::time_t t = std::time(nullptr);
+	    if (m_Comm.Rank() == 0)
+	    std::cout<< "begin metadata gather [" << std::put_time(std::localtime(&t), "%F %T %Z") << "] " << "my size " << LocalSize << " TotalSize " << TotalSize << std::endl;
+	    m_Profiler.Start("ES_GatherMetadataBlocks");
+	    m_Comm.GathervArrays(MetaBuffer.data(), LocalSize,
 						    RecvCounts.data(), RecvCounts.size(),
 						    RecvBuffer.data(), 0);
+	    m_Profiler.Stop("ES_GatherMetadataBlocks");
+	    if (m_Comm.Rank() == 0)
+	    std::cout<< "end metadata gather [" << std::put_time(std::localtime(&t), "%F %T %Z") << "] " << "my size " << LocalSize << " TotalSize " << TotalSize << std::endl;
 	    buf = &RecvBuffer;
 	    m_Profiler.Stop("ES_simple_gather");
 	}
@@ -891,7 +913,7 @@ void BP5Writer::EndStep()
 
     if (getenv("SIMPLEMETADATA"))
     {
-	TwoLevelAggregationMetadata(TSInfo);
+        SimpleAggregationMetadata(TSInfo);
     } else if (getenv("OLDMETADATA"))
     {
 	TwoLevelAggregationMetadata(TSInfo);
