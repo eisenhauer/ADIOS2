@@ -25,7 +25,7 @@ class BP5Helper : virtual public BP5Base
 {
 public:
     static void BP5AggregateInformation(helper::Comm &mpiComm,
-					adios2::profiling::JSONProfiler &Profiler,
+                                        adios2::profiling::JSONProfiler &Profiler,
                                         std::vector<BP5Base::MetaMetaInfoBlock> &NewMetaMetaBlocks,
                                         std::vector<core::iovec> &AttributeEncodeBuffers,
                                         std::vector<size_t> &MetaEncodeSize,
@@ -39,14 +39,15 @@ private:
         bool operator<(const digest &dg) const { return (memcmp(&x[0], &dg.x[0], sizeof(x))); }
     };
 #define FIXED_MMB_SLOT_COUNT 4
-    struct node_contrib {
-	digest AttrHash;
-	size_t AttrSize;
-	size_t MMBCount;
-	digest MMBArray[FIXED_MMB_SLOT_COUNT];
-	size_t MMBSizeArray[FIXED_MMB_SLOT_COUNT];
-	size_t MetaEncodeSize;
-	uint64_t WriterDataPosition;
+    struct node_contrib
+    {
+        digest AttrHash;
+        size_t AttrSize;
+        size_t MMBCount;
+        digest MMBArray[FIXED_MMB_SLOT_COUNT];
+        size_t MMBSizeArray[FIXED_MMB_SLOT_COUNT];
+        size_t MetaEncodeSize;
+        uint64_t WriterDataPosition;
     };
     static digest HashOfBlock(const void *block, const size_t block_len);
     static std::vector<char>
@@ -55,20 +56,20 @@ private:
                      const size_t MetaEncodeSize, const std::vector<uint64_t> WriterDataPositions);
     static std::vector<char>
     BuildFixedNodeContrib(const digest attrHash, size_t attrSize,
-			  const std::vector<BP5Base::MetaMetaInfoBlock> NewMetaMetaBlocks,
-			  const size_t MetaEncodeSize, const std::vector<uint64_t> WriterDataPositions);
+                          const std::vector<BP5Base::MetaMetaInfoBlock> NewMetaMetaBlocks,
+                          const size_t MetaEncodeSize,
+                          const std::vector<uint64_t> WriterDataPositions);
     static void
     BreakdownIncomingMInfo(const std::vector<size_t> RecvCounts, const std::vector<char> RecvBuffer,
                            std::vector<size_t> &SecondRecvCounts, std::vector<uint64_t> &BcastInfo,
                            std::vector<uint64_t> &WriterDataPositions,
                            std::vector<size_t> &MetaEncodeSize, std::vector<size_t> &AttrSizes,
                            std::vector<size_t> &MMBSizes, std::vector<digest> &MBBIDs);
-    static void
-    BreakdownFixedIncomingMInfo(const size_t NodeCount, const std::vector<char> RecvBuffer,
-                           std::vector<size_t> &SecondRecvCounts, std::vector<uint64_t> &BcastInfo,
-                           std::vector<uint64_t> &WriterDataPositions,
-                           std::vector<size_t> &MetaEncodeSize, std::vector<size_t> &AttrSizes,
-				std::vector<size_t> &MMBSizes, std::vector<digest> &MBBIDs);
+    static void BreakdownFixedIncomingMInfo(
+        const size_t NodeCount, const std::vector<char> RecvBuffer,
+        std::vector<size_t> &SecondRecvCounts, std::vector<uint64_t> &BcastInfo,
+        std::vector<uint64_t> &WriterDataPositions, std::vector<size_t> &MetaEncodeSize,
+        std::vector<size_t> &AttrSizes, std::vector<size_t> &MMBSizes, std::vector<digest> &MBBIDs);
     static void BreakdownIncomingMData(const std::vector<size_t> &RecvCounts,
                                        std::vector<uint64_t> &BcastInfo,
                                        const std::vector<char> &IncomingMMA,

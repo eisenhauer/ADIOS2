@@ -153,7 +153,7 @@ static void ParseArgs(int argc, char **argv)
         }
         else if (std::string(argv[1]) == "--attributes_everywhere")
         {
-	    AttributesEverywhere = true;
+            AttributesEverywhere = true;
         }
         else if (std::string(argv[1]) == "--num_blocks")
         {
