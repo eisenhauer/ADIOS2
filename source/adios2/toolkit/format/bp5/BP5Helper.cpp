@@ -367,26 +367,26 @@ void BP5Helper::BP5AggregateInformation(helper::Comm &mpiComm,
     {
         RecvBuffer.resize(mpiComm.Size() * sizeof(node_contrib));
         std::time_t t = std::time(nullptr);
-        std::cout << "start first gather arrays [" << std::put_time(std::localtime(&t), "%F %T %Z")
-                  << "] " << std::endl;
+	//        std::cout << "start first gather arrays [" << std::put_time(std::localtime(&t), "%F %T %Z")
+	//                  << "] " << std::endl;
         Profiler.Start("FixedMetaInfoGather");
         mpiComm.GatherArrays(myFixedContrib.data(), myFixedContrib.size(), RecvBuffer.data(), 0);
         Profiler.Stop("FixedMetaInfoGather");
         t = std::time(nullptr);
-        std::cout << "end first gather arrays [" << std::put_time(std::localtime(&t), "%F %T %Z")
-                  << "] " << std::endl;
+	//        std::cout << "end first gather arrays [" << std::put_time(std::localtime(&t), "%F %T %Z")
+	//                  << "] " << std::endl;
         BreakdownFixedIncomingMInfo(mpiComm.Size(), RecvBuffer, SecondRecvCounts, BcastInfo,
                                     WriterDataPositions, MetaEncodeSize, AttrSize, MMBSizes,
                                     MMBIDs);
         t = std::time(nullptr);
-        std::cout << "start bcst [" << std::put_time(std::localtime(&t), "%F %T %Z") << "] "
-                  << std::endl;
+	//        std::cout << "start bcst [" << std::put_time(std::localtime(&t), "%F %T %Z") << "] "
+	//                  << std::endl;
         Profiler.Start("MetaInfoBcast");
         mpiComm.Bcast(BcastInfo.data(), BcastInfo.size(), 0, "");
         Profiler.Stop("MetaInfoBcast");
         t = std::time(nullptr);
-        std::cout << "end bcst [" << std::put_time(std::localtime(&t), "%F %T %Z") << "] "
-                  << std::endl;
+	//        std::cout << "end bcst [" << std::put_time(std::localtime(&t), "%F %T %Z") << "] "
+	//                  << std::endl;
     }
     else
     {
@@ -414,21 +414,21 @@ void BP5Helper::BP5AggregateInformation(helper::Comm &mpiComm,
         {
             uint64_t TotalSize = 0;
             std::time_t t = std::time(nullptr);
-            std::cout << "in dynamic  values [" << std::put_time(std::localtime(&t), "%F %T %Z")
-                      << "] " << std::endl;
+	    //            std::cout << "in dynamic  values [" << std::put_time(std::localtime(&t), "%F %T %Z")
+	    //                      << "] " << std::endl;
             TotalSize = std::accumulate(RecvCounts.begin(), RecvCounts.end(), size_t(0));
             RecvBuffer.resize(TotalSize);
             mpiComm.GathervArrays(myContrib.data(), myContrib.size(), RecvCounts.data(),
                                   RecvCounts.size(), RecvBuffer.data(), 0);
             t = std::time(nullptr);
-            std::cout << "enddynamic gather arrayss ["
-                      << std::put_time(std::localtime(&t), "%F %T %Z") << "] " << std::endl;
+	    //            std::cout << "enddynamic gather arrayss ["
+	    //                      << std::put_time(std::localtime(&t), "%F %T %Z") << "] " << std::endl;
             BreakdownIncomingMInfo(RecvCounts, RecvBuffer, SecondRecvCounts, BcastInfo,
                                    WriterDataPositions, MetaEncodeSize, AttrSize, MMBSizes, MMBIDs);
             mpiComm.Bcast(BcastInfo.data(), BcastInfo.size(), 0, "");
             t = std::time(nullptr);
-            std::cout << "enddynamic bcase [" << std::put_time(std::localtime(&t), "%F %T %Z")
-                      << "] " << std::endl;
+	    //            std::cout << "enddynamic bcase [" << std::put_time(std::localtime(&t), "%F %T %Z")
+	    //                      << "] " << std::endl;
         }
         else
         {
@@ -447,8 +447,8 @@ void BP5Helper::BP5AggregateInformation(helper::Comm &mpiComm,
         if (mpiComm.Rank() == 0)
         {
             std::time_t t = std::time(nullptr);
-            std::cout << "aggregate shortciruit [" << std::put_time(std::localtime(&t), "%F %T %Z")
-                      << "] " << std::endl;
+	    //            std::cout << "aggregate shortciruit [" << std::put_time(std::localtime(&t), "%F %T %Z")
+	    //                      << "] " << std::endl;
         }
         return;
     }
@@ -499,15 +499,15 @@ void BP5Helper::BP5AggregateInformation(helper::Comm &mpiComm,
         std::vector<char> IncomingMMA(TotalSize);
         uint64_t *AlignedIncomingData = reinterpret_cast<uint64_t *>(IncomingMMA.data());
         std::time_t t = std::time(nullptr);
-        std::cout << "begin MMA gather [" << std::put_time(std::localtime(&t), "%F %T %Z") << "] "
-                  << std::endl;
+	//        std::cout << "begin MMA gather [" << std::put_time(std::localtime(&t), "%F %T %Z") << "] "
+	//                  << std::endl;
         Profiler.Start("SelectMetaInfoGather");
         mpiComm.GathervArrays(AlignedContrib, AlignedContribCount, AlignedCounts.data(),
                               AlignedCounts.size(), AlignedIncomingData, 0);
         Profiler.Stop("SelectMetaInfoGather");
         t = std::time(nullptr);
-        std::cout << "endn MMA gather [" << std::put_time(std::localtime(&t), "%F %T %Z") << "] "
-                  << std::endl;
+	//        std::cout << "endn MMA gather [" << std::put_time(std::localtime(&t), "%F %T %Z") << "] "
+	//                  << std::endl;
         BreakdownIncomingMData(SecondRecvCounts, BcastInfo, IncomingMMA, NewMetaMetaBlocks,
                                AttributeEncodeBuffers, AttrSize, MMBSizes, MMBIDs);
     }

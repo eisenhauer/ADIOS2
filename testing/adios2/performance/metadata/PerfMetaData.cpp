@@ -537,8 +537,10 @@ int main(int argc, char **argv)
         if (FileWriter)
         {
             DoWriter(engineParams);
-            if (key == 0)
+            if (key == 0) {
                 std::cout << "File Writer Time " << elapsed.count() << " seconds." << std::endl;
+                std::cout << "Per step writer time " << elapsed.count()/(double)NSteps << " seconds." << std::endl;
+	    }
         }
         else
         {

@@ -659,10 +659,10 @@ void BP5Writer::SelectiveAggregationMetadata(format::BP5Serializer::TimestepInfo
         std::vector<char> ContigMetadata;
         ContigMetadata.resize(MetadataTotalSize);
         std::time_t t = std::time(nullptr);
-        std::cout << "begin metadata gather [" << std::put_time(std::localtime(&t), "%F %T %Z")
-                  << "] "
-                  << "aligned size " << AlignedMetadataSize << " TotalSize " << MetadataTotalSize
-                  << std::endl;
+	//        std::cout << "begin metadata gather [" << std::put_time(std::localtime(&t), "%F %T %Z")
+	//                  << "] "
+	//                  << "aligned size " << AlignedMetadataSize << " TotalSize " << MetadataTotalSize
+	//                  << std::endl;
         auto AlignedCounts = MetaEncodeSize;
         for (auto &C : AlignedCounts)
             C /= 8;
@@ -674,8 +674,8 @@ void BP5Writer::SelectiveAggregationMetadata(format::BP5Serializer::TimestepInfo
 
         m_Profiler.Stop("ES_GatherMetadataBlocks");
         t = std::time(nullptr);
-        std::cout << "end metadata gather [" << std::put_time(std::localtime(&t), "%F %T %Z")
-                  << "] " << std::endl;
+	//        std::cout << "end metadata gather [" << std::put_time(std::localtime(&t), "%F %T %Z")
+	//                  << "] " << std::endl;
         m_Profiler.Start("ES_write_metadata");
         m_LatestMetaDataSize = NewWriteMetadata(ContigMetadata, MetaEncodeSize, AttributeBlocks);
 
@@ -732,17 +732,17 @@ void BP5Writer::SimpleAggregationMetadata(format::BP5Serializer::TimestepInfo TS
 
         std::time_t t = std::time(nullptr);
         if (m_Comm.Rank() == 0)
-            std::cout << "begin metadata gather [" << std::put_time(std::localtime(&t), "%F %T %Z")
-                      << "] "
-                      << "my size " << LocalSize << " TotalSize " << TotalSize << std::endl;
+	  //            std::cout << "begin metadata gather [" << std::put_time(std::localtime(&t), "%F %T %Z")
+	  //                      << "] "
+	  //                      << "my size " << LocalSize << " TotalSize " << TotalSize << std::endl;
         m_Profiler.Start("ES_GatherMetadataBlocks");
         m_Comm.GathervArrays(MetaBuffer.data(), LocalSize, RecvCounts.data(), RecvCounts.size(),
                              RecvBuffer.data(), 0);
         m_Profiler.Stop("ES_GatherMetadataBlocks");
         if (m_Comm.Rank() == 0)
-            std::cout << "end metadata gather [" << std::put_time(std::localtime(&t), "%F %T %Z")
-                      << "] "
-                      << "my size " << LocalSize << " TotalSize " << TotalSize << std::endl;
+	  //            std::cout << "end metadata gather [" << std::put_time(std::localtime(&t), "%F %T %Z")
+	  //                      << "] "
+	  //                      << "my size " << LocalSize << " TotalSize " << TotalSize << std::endl;
         buf = &RecvBuffer;
         m_Profiler.Stop("ES_simple_gather");
     }
