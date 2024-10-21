@@ -215,6 +215,8 @@ private:
     aggregator::MPIChain m_AggregatorMetadata; // first level
     helper::Comm m_CommMetadataAggregators;    // second level
 
+  void GathervArraysTwoLevel(uint64_t *MyContrib, size_t LocalSize, size_t *OverallRecvCounts, size_t OverallRecvCountsSize, uint64_t *OverallRecvBuffer, size_t DestRank);
+
     adios2::profiling::JSONProfiler m_Profiler;
 
 protected:

@@ -31,13 +31,14 @@ public:
                                         std::vector<size_t> &MetaEncodeSize,
                                         std::vector<uint64_t> &WriterDataPositions);
 
-private:
     struct digest
     {
         unsigned char x[16];
         // compare for order
         bool operator<(const digest &dg) const { return (memcmp(&x[0], &dg.x[0], sizeof(x))); }
     };
+    static digest HashOfBlock(const void *block, const size_t block_len);
+private:
 #define FIXED_MMB_SLOT_COUNT 4
     struct node_contrib
     {
@@ -49,7 +50,6 @@ private:
         size_t MetaEncodeSize;
         uint64_t WriterDataPosition;
     };
-    static digest HashOfBlock(const void *block, const size_t block_len);
     static std::vector<char>
     BuildNodeContrib(const digest attrHash, size_t attrSize,
                      const std::vector<BP5Base::MetaMetaInfoBlock> NewMetaMetaBlocks,
