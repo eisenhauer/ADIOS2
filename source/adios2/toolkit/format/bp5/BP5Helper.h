@@ -38,6 +38,7 @@ public:
         bool operator<(const digest &dg) const { return (memcmp(&x[0], &dg.x[0], sizeof(x))); }
     };
     static digest HashOfBlock(const void *block, const size_t block_len);
+
 private:
 #define FIXED_MMB_SLOT_COUNT 4
     struct node_contrib

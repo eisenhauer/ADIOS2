@@ -6,11 +6,11 @@
  *
  */
 
+#include "BP5Helper.h"
 #include "adios2/core/Attribute.h"
 #include "adios2/core/Engine.h"
 #include "adios2/core/IO.h"
 #include "adios2/core/VariableBase.h"
-#include "BP5Helper.h"
 #ifdef ADIOS2_HAVE_DERIVED_VARIABLE
 #include "adios2/core/VariableDerived.h"
 #endif
@@ -1496,18 +1496,20 @@ std::vector<char> BP5Serializer::CopyMetadataToContiguous(
     size_t attrnum = 0;
     for (auto &a : AttributeEncodeBuffers)
     {
-      auto thisAttrHash = BP5Helper::HashOfBlock(a.iov_base, a.iov_len);
-      NeedThisAttr[attrnum] = (AttrSet.count(thisAttrHash) == 0);
-      if (NeedThisAttr[attrnum]) AttrSet.insert(thisAttrHash);
-      attrnum++;
+        auto thisAttrHash = BP5Helper::HashOfBlock(a.iov_base, a.iov_len);
+        NeedThisAttr[attrnum] = (AttrSet.count(thisAttrHash) == 0);
+        if (NeedThisAttr[attrnum])
+            AttrSet.insert(thisAttrHash);
+        attrnum++;
     }
     attrnum = 0;
     for (auto &a : AttributeEncodeBuffers)
     {
         RetSize += sizeof(uint64_t); // AttrEncodeLen
         size_t AlignedSize = ((a.iov_len + 7) & ~0x7);
-        if (NeedThisAttr[attrnum]) RetSize += AlignedSize;
-	attrnum++;
+        if (NeedThisAttr[attrnum])
+            RetSize += AlignedSize;
+        attrnum++;
     }
     RetSize += sizeof(DSCount);
     RetSize += DataSizes.size() * sizeof(uint64_t);
@@ -1560,7 +1562,7 @@ std::vector<char> BP5Serializer::CopyMetadataToContiguous(
             size_t ZeroSize = 0;
             helper::CopyToBuffer(Ret, Position, &ZeroSize);
         }
-	attrnum++;
+        attrnum++;
     }
 
     helper::CopyToBuffer(Ret, Position, &DSCount);

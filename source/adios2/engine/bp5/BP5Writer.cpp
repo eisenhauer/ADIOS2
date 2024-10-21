@@ -660,28 +660,34 @@ void BP5Writer::SelectiveAggregationMetadata(format::BP5Serializer::TimestepInfo
         std::vector<char> ContigMetadata;
         ContigMetadata.resize(MetadataTotalSize);
         std::time_t t = std::time(nullptr);
-	//        std::cout << "begin metadata gather [" << std::put_time(std::localtime(&t), "%F %T %Z")
-	//                  << "] "
-	//                  << "aligned size " << AlignedMetadataSize << " TotalSize " << MetadataTotalSize
-	//                  << std::endl;
+        //        std::cout << "begin metadata gather [" << std::put_time(std::localtime(&t), "%F %T
+        //        %Z")
+        //                  << "] "
+        //                  << "aligned size " << AlignedMetadataSize << " TotalSize " <<
+        //                  MetadataTotalSize
+        //                  << std::endl;
         auto AlignedCounts = MetaEncodeSize;
         for (auto &C : AlignedCounts)
             C /= 8;
         m_Profiler.Stop("ES_AGG1");
         m_Profiler.Start("ES_GatherMetadataBlocks");
-	if (m_Comm.Size() > ONE_LEVEL_SIZE_LIMIT) {
-	  GathervArraysTwoLevel((uint64_t *)TSInfo.MetaEncodeBuffer->Data(), AlignedMetadataSize / 8,
-			       AlignedCounts.data(), AlignedCounts.size(),
-			       (uint64_t *)ContigMetadata.data(), 0);
-	} else {
-	  m_Comm.GathervArrays((uint64_t *)TSInfo.MetaEncodeBuffer->Data(), AlignedMetadataSize / 8,
-			       AlignedCounts.data(), AlignedCounts.size(),
-			       (uint64_t *)ContigMetadata.data(), 0);
-	}
+        if (m_Comm.Size() > ONE_LEVEL_SIZE_LIMIT)
+        {
+            GathervArraysTwoLevel((uint64_t *)TSInfo.MetaEncodeBuffer->Data(),
+                                  AlignedMetadataSize / 8, AlignedCounts.data(),
+                                  AlignedCounts.size(), (uint64_t *)ContigMetadata.data(), 0);
+        }
+        else
+        {
+            m_Comm.GathervArrays((uint64_t *)TSInfo.MetaEncodeBuffer->Data(),
+                                 AlignedMetadataSize / 8, AlignedCounts.data(),
+                                 AlignedCounts.size(), (uint64_t *)ContigMetadata.data(), 0);
+        }
         m_Profiler.Stop("ES_GatherMetadataBlocks");
         t = std::time(nullptr);
-	//        std::cout << "end metadata gather [" << std::put_time(std::localtime(&t), "%F %T %Z")
-	//                  << "] " << std::endl;
+        //        std::cout << "end metadata gather [" << std::put_time(std::localtime(&t), "%F %T
+        //        %Z")
+        //                  << "] " << std::endl;
         m_Profiler.Start("ES_write_metadata");
         m_LatestMetaDataSize = NewWriteMetadata(ContigMetadata, MetaEncodeSize, AttributeBlocks);
 
@@ -695,14 +701,18 @@ void BP5Writer::SelectiveAggregationMetadata(format::BP5Serializer::TimestepInfo
     }
     else
     {
-      if (m_Comm.Size() > ONE_LEVEL_SIZE_LIMIT) {
-	  GathervArraysTwoLevel((uint64_t *)TSInfo.MetaEncodeBuffer->Data(), AlignedMetadataSize / 8,
-				NULL, 0, //AlignedCounts.data(), AlignedCounts.size(),
-				nullptr, 0);
-	} else {
-	  m_Comm.GathervArrays(TSInfo.MetaEncodeBuffer->Data(), AlignedMetadataSize,
-			       MetaEncodeSize.data(), MetaEncodeSize.size(), (char *)nullptr, 0);
-	}
+        if (m_Comm.Size() > ONE_LEVEL_SIZE_LIMIT)
+        {
+            GathervArraysTwoLevel((uint64_t *)TSInfo.MetaEncodeBuffer->Data(),
+                                  AlignedMetadataSize / 8, NULL,
+                                  0, // AlignedCounts.data(), AlignedCounts.size(),
+                                  nullptr, 0);
+        }
+        else
+        {
+            m_Comm.GathervArrays(TSInfo.MetaEncodeBuffer->Data(), AlignedMetadataSize,
+                                 MetaEncodeSize.data(), MetaEncodeSize.size(), (char *)nullptr, 0);
+        }
     }
     m_Profiler.Stop("ES_gather_write_meta");
 }
@@ -743,18 +753,22 @@ void BP5Writer::SimpleAggregationMetadata(format::BP5Serializer::TimestepInfo TS
         }
 
         std::time_t t = std::time(nullptr);
-	//        if (m_Comm.Rank() == 0)
-	  //            std::cout << "begin metadata gather [" << std::put_time(std::localtime(&t), "%F %T %Z")
-	  //                      << "] "
-	  //                      << "my size " << LocalSize << " TotalSize " << TotalSize << std::endl;
+        //        if (m_Comm.Rank() == 0)
+        //            std::cout << "begin metadata gather [" << std::put_time(std::localtime(&t),
+        //            "%F %T %Z")
+        //                      << "] "
+        //                      << "my size " << LocalSize << " TotalSize " << TotalSize <<
+        //                      std::endl;
         m_Profiler.Start("ES_GatherMetadataBlocks");
-	m_Comm.GathervArrays(MetaBuffer.data(), LocalSize, RecvCounts.data(), RecvCounts.size(),
-			     RecvBuffer.data(), 0);
+        m_Comm.GathervArrays(MetaBuffer.data(), LocalSize, RecvCounts.data(), RecvCounts.size(),
+                             RecvBuffer.data(), 0);
         m_Profiler.Stop("ES_GatherMetadataBlocks");
-	//        if (m_Comm.Rank() == 0)
-	  //            std::cout << "end metadata gather [" << std::put_time(std::localtime(&t), "%F %T %Z")
-	  //                      << "] "
-	  //                      << "my size " << LocalSize << " TotalSize " << TotalSize << std::endl;
+        //        if (m_Comm.Rank() == 0)
+        //            std::cout << "end metadata gather [" << std::put_time(std::localtime(&t), "%F
+        //            %T %Z")
+        //                      << "] "
+        //                      << "my size " << LocalSize << " TotalSize " << TotalSize <<
+        //                      std::endl;
         buf = &RecvBuffer;
         m_Profiler.Stop("ES_simple_gather");
     }
@@ -895,7 +909,9 @@ void BP5Writer::TwoLevelAggregationMetadata(format::BP5Serializer::TimestepInfo 
     m_Profiler.Stop("ES_meta2");
 }
 
-void BP5Writer::GathervArraysTwoLevel(uint64_t *MyContrib, size_t LocalSize, size_t *OverallRecvCounts, size_t OverallRecvCountsSize, uint64_t *OverallRecvBuffer, size_t DestRank)
+void BP5Writer::GathervArraysTwoLevel(uint64_t *MyContrib, size_t LocalSize,
+                                      size_t *OverallRecvCounts, size_t OverallRecvCountsSize,
+                                      uint64_t *OverallRecvBuffer, size_t DestRank)
 {
     /*
      * Two-step aggregation of data that requires no intermediate processing
@@ -905,7 +921,7 @@ void BP5Writer::GathervArraysTwoLevel(uint64_t *MyContrib, size_t LocalSize, siz
     if (m_AggregatorMetadata.m_Comm.Size() > 1)
     { // level 1
         m_Profiler.Start("ES_meta1_gather");
-	std::cout << "before 0, size " << m_AggregatorMetadata.m_Comm.Size()  << std::endl;
+        std::cout << "before 0, size " << m_AggregatorMetadata.m_Comm.Size() << std::endl;
         std::vector<size_t> RecvCounts = m_AggregatorMetadata.m_Comm.GatherValues(LocalSize, 0);
         if (m_AggregatorMetadata.m_Comm.Rank() == 0)
         {
@@ -938,7 +954,7 @@ void BP5Writer::GathervArraysTwoLevel(uint64_t *MyContrib, size_t LocalSize, siz
         }
         else
         {
-	  std::cout << "This should never happen" << std::endl;
+            std::cout << "This should never happen" << std::endl;
         }
     } // level 2
     m_Profiler.Stop("ES_meta2");
