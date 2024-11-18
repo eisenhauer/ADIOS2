@@ -9,6 +9,10 @@
 #include "adios2/helper/adiosLog.h"
 #include "adios2/helper/adiosString.h"
 #include "adios2/helper/adiosSystem.h"
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+
 #ifdef _MSC_VER
 #define strdup(x) _strdup(x)
 #endif
@@ -20,6 +24,8 @@
 
 namespace adios2
 {
+
+using namespace EVPathRemoteCommon;
 
 EVPathRemote::EVPathRemote(const adios2::HostOptions &hostOptions) : Remote(hostOptions) {}
 
@@ -39,6 +45,27 @@ void OpenResponseHandler(CManager cm, CMConnection conn, void *vevent, void *cli
     void *obj = CMCondition_get_client_data(cm, open_response_msg->OpenResponseCondition);
     static_cast<EVPathRemote *>(obj)->m_ID = open_response_msg->FileHandle;
     CMCondition_signal(cm, open_response_msg->OpenResponseCondition);
+    return;
+};
+
+void StatusResponseHandler(CManager cm, CMConnection conn, void *vevent, void *client_data,
+                           attr_list attrs)
+{
+    EVPathRemoteCommon::StatusResponse2Msg msg =
+        static_cast<EVPathRemoteCommon::StatusResponse2Msg>(vevent);
+
+    void *obj = CMCondition_get_client_data(cm, msg->StatusResponseCondition);
+    std::cout << "Status response message response:  ServerProtocolVersion = "
+              << msg->ServerProtocolVersion << std::endl;
+    std::cout << "Status response message response:  ServerLocalPort = " << msg->LocalPort
+              << std::endl;
+    for (size_t i = 0; i < msg->IPCount; i++)
+    {
+        struct in_addr Addr;
+        Addr.s_addr = htonl(msg->IPList[i]);
+        printf("%s\n", inet_ntoa(Addr));
+    }
+    CMCondition_signal(cm, msg->StatusResponseCondition);
     return;
 };
 
@@ -87,7 +114,31 @@ void EVPathRemote::InitCMData()
                            (CMHandlerFunc)OpenSimpleResponseHandler, &ev_state);
         CMregister_handler(ev_state.ReadResponseFormat, (CMHandlerFunc)ReadResponseHandler,
                            &ev_state);
+        CMregister_handler(ev_state.StatusResponse2Format, (CMHandlerFunc)StatusResponseHandler,
+                           &ev_state);
     });
+}
+
+CMConnection EVPathRemote::PossiblyReopenServerConn(const std::string hostname, int32_t port)
+{
+    _StatusServerMsg status_msg;
+    StatusResponse2Msg response;
+    memset(&status_msg, 0, sizeof(status_msg));
+    status_msg.StatusResponseCondition = CMCondition_get(ev_state.cm, m_conn);
+    CMCondition_set_client_data(ev_state.cm, status_msg.StatusResponseCondition, (void *)&response);
+    CMwrite(m_conn, ev_state.StatusServerFormat, &status_msg);
+    int ret = CMCondition_wait(ev_state.cm, status_msg.StatusResponseCondition);
+    if (!ret)
+        return m_conn;
+    // response is now valid
+    // Only reopen if we think we don't have a direct connection
+    bool DoConnection = false;
+    DoConnection |= (port != response->LocalPort);
+    attr_list ConnAttrs = CMConnection_get_attrs(m_conn);
+    std::cout << "Connection attributes ";
+    dump_attr_list(ConnAttrs);
+    std::cout << std::endl;
+    return m_conn;
 }
 
 void EVPathRemote::Open(const std::string hostname, const int32_t port, const std::string filename,
@@ -108,6 +159,7 @@ void EVPathRemote::Open(const std::string hostname, const int32_t port, const st
     if (!m_conn)
         return;
 
+    PossiblyReopenServerConn(hostname, port);
     memset(&open_msg, 0, sizeof(open_msg));
     open_msg.FileName = (char *)filename.c_str();
     switch (mode)

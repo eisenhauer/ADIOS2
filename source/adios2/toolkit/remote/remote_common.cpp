@@ -115,8 +115,10 @@ FMStructDescRec KillResponseStructs[] = {
     {"KillResponse", KillResponseList, sizeof(struct _KillResponseMsg), NULL},
     {NULL, NULL, 0, NULL}};
 
-FMField StatusServerList[] = {{"StatusResponseCondition", "integer", sizeof(long),
+FMField StatusServerList[] = {{"StatusResponseCondition", "integer", sizeof(int),
                                FMOffset(StatusServerMsg, StatusResponseCondition)},
+                              {"ClientProtocolVersion(0)", "integer", sizeof(int),
+                               FMOffset(StatusServerMsg, ClientProtocolVersion)},
                               {NULL, NULL, 0, 0}};
 
 FMStructDescRec StatusServerStructs[] = {
@@ -132,6 +134,22 @@ FMField StatusResponseList[] = {
 
 FMStructDescRec StatusResponseStructs[] = {
     {"StatusResponse", StatusResponseList, sizeof(struct _StatusResponseMsg), NULL},
+    {NULL, NULL, 0, NULL}};
+
+FMField StatusResponse2List[] = {
+    {"StatusResponseCondition", "integer", sizeof(long),
+     FMOffset(StatusResponse2Msg, StatusResponseCondition)},
+    {"Hostname", "string", sizeof(char *), FMOffset(StatusResponse2Msg, Hostname)},
+    {"Status", "string", sizeof(char *), FMOffset(StatusResponse2Msg, Status)},
+    {"ServerProtocolVersion", "integer", sizeof(int),
+     FMOffset(StatusResponse2Msg, ServerProtocolVersion)},
+    {"LocalPort", "integer", sizeof(int), FMOffset(StatusResponse2Msg, LocalPort)},
+    {"IPCount", "integer", sizeof(int), FMOffset(StatusResponse2Msg, IPCount)},
+    {"IPList", "integer[IPCount]", sizeof(int32_t), FMOffset(StatusResponse2Msg, IPList)},
+    {NULL, NULL, 0, 0}};
+
+FMStructDescRec StatusResponse2Structs[] = {
+    {"StatusResponse", StatusResponse2List, sizeof(struct _StatusResponse2Msg), NULL},
     {NULL, NULL, 0, NULL}};
 
 void RegisterFormats(EVPathRemoteCommon::Remote_evpath_state &ev_state)
@@ -158,6 +176,8 @@ void RegisterFormats(EVPathRemoteCommon::Remote_evpath_state &ev_state)
         CMregister_format(ev_state.cm, EVPathRemoteCommon::StatusServerStructs);
     ev_state.StatusResponseFormat =
         CMregister_format(ev_state.cm, EVPathRemoteCommon::StatusResponseStructs);
+    ev_state.StatusResponse2Format =
+        CMregister_format(ev_state.cm, EVPathRemoteCommon::StatusResponse2Structs);
 }
 }
 }

@@ -21,8 +21,14 @@
 #include <sys/stat.h>  // open, fstat
 #include <sys/types.h> // open
 #ifndef _MSC_VER
+#include <arpa/inet.h>
+#include <ifaddrs.h>
+#include <net/if.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <sys/types.h>
 #include <unistd.h> // write, close, ftruncate
-
 static int fd_is_valid(int fd) { return fcntl(fd, F_GETFD) != -1 || errno != EBADF; }
 
 #else
@@ -58,6 +64,7 @@ size_t ADIOSFilesOpened = 0;
 static int report_port_selection = 0;
 int parent_pid;
 uint64_t random_cookie = 0;
+int ListenPort = -1;
 
 std::string readable_size(uint64_t size)
 {
@@ -396,7 +403,7 @@ static void StatusServerHandler(CManager cm, CMConnection conn, void *vevent, vo
 {
     StatusServerMsg status_msg = static_cast<StatusServerMsg>(vevent);
     struct Remote_evpath_state *ev_state = static_cast<struct Remote_evpath_state *>(client_data);
-    _StatusResponseMsg status_response_msg;
+    _StatusResponse2Msg status_response_msg;
     char hostbuffer[256];
 
     // To retrieve hostname
@@ -410,7 +417,37 @@ static void StatusServerHandler(CManager cm, CMConnection conn, void *vevent, vo
            << " (" << TotalSimpleReads << " reads for " << readable_size(TotalSimpleBytesSent)
            << ")";
     status_response_msg.Status = strdup(Status.str().c_str());
-    CMwrite(conn, ev_state->StatusResponseFormat, &status_response_msg);
+    status_response_msg.ServerProtocolVersion = 1;
+    status_response_msg.LocalPort = ListenPort;
+    struct ifaddrs *addrs, *tmp;
+    getifaddrs(&addrs);
+    tmp = addrs;
+    status_response_msg.IPCount = 0;
+    status_response_msg.IPList = (int32_t *)malloc(sizeof(int));
+    while (tmp)
+    {
+        if (tmp->ifa_addr && tmp->ifa_addr->sa_family == AF_INET)
+        {
+            // everyone is listening on loopback, don't list that!
+            if ((tmp->ifa_flags & IFF_LOOPBACK) == 0)
+            {
+                status_response_msg.IPList = (int32_t *)realloc(
+                    status_response_msg.IPList, sizeof(int) * (status_response_msg.IPCount + 1));
+                struct sockaddr_in *pAddr = (struct sockaddr_in *)tmp->ifa_addr;
+                printf("%s: %s\n", tmp->ifa_name, inet_ntoa(pAddr->sin_addr));
+                // send in host byte order, because transmission may change to client's order
+                status_response_msg.IPList[status_response_msg.IPCount] =
+                    ntohl(pAddr->sin_addr.s_addr);
+                status_response_msg.IPCount++;
+            }
+        }
+        tmp = tmp->ifa_next;
+    }
+
+    freeifaddrs(addrs);
+
+    CMwrite(conn, ev_state->StatusResponse2Format, &status_response_msg);
+    free(status_response_msg.IPList);
     free(status_response_msg.Status);
 }
 
@@ -744,9 +781,8 @@ int main(int argc, char **argv)
     attr_list contact_list = CMget_contact_list(cm);
     if (contact_list)
     {
-        int Port = -1;
-        get_int_attr(listen_list, CM_IP_PORT, &Port);
-        std::cout << "Listening on Port " << Port << std::endl;
+        get_int_attr(listen_list, CM_IP_PORT, &ListenPort);
+        std::cout << "Listening on Port " << ListenPort << std::endl;
     }
     ev_state.cm = cm;
 

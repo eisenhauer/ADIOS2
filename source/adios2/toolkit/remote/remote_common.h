@@ -107,6 +107,7 @@ typedef struct _KillResponseMsg
 typedef struct _StatusServerMsg
 {
     int StatusResponseCondition;
+    int ClientProtocolVersion;
 } *StatusServerMsg;
 
 typedef struct _StatusResponseMsg
@@ -115,6 +116,17 @@ typedef struct _StatusResponseMsg
     char *Hostname;
     char *Status;
 } *StatusResponseMsg;
+
+typedef struct _StatusResponse2Msg
+{
+    int StatusResponseCondition;
+    char *Hostname;
+    char *Status;
+    int ServerProtocolVersion;
+    int LocalPort;
+    int IPCount;
+    int32_t *IPList;
+} *StatusResponse2Msg;
 
 enum VerbosityLevel
 {
@@ -144,6 +156,7 @@ struct Remote_evpath_state
     CMFormat KillResponseFormat;
     CMFormat StatusServerFormat;
     CMFormat StatusResponseFormat;
+    CMFormat StatusResponse2Format;
 };
 
 void RegisterFormats(struct Remote_evpath_state &ev_state);

@@ -57,6 +57,7 @@ private:
     EVPathRemoteCommon::Remote_evpath_state ev_state;
     CMConnection m_conn = NULL;
     std::mutex m_CMInitMutex;
+    CMConnection PossiblyReopenServerConn(const std::string hostname, int32_t port);
 #endif
     bool m_Active = false;
 };
