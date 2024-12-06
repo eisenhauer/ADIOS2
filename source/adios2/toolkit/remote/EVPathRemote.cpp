@@ -65,6 +65,9 @@ void StatusResponseHandler(CManager cm, CMConnection conn, void *vevent, void *c
         Addr.s_addr = htonl(msg->IPList[i]);
         printf("%s\n", inet_ntoa(Addr));
     }
+    StatusResponse2Msg *response_ptr = (StatusResponse2Msg*)obj;
+    (*response_ptr) = msg;
+    CMtake_buffer(cm, msg);
     CMCondition_signal(cm, msg->StatusResponseCondition);
     return;
 };
@@ -137,6 +140,22 @@ CMConnection EVPathRemote::PossiblyReopenServerConn(const std::string hostname, 
     attr_list ConnAttrs = CMConnection_get_attrs(m_conn);
     std::cout << "Connection attributes ";
     dump_attr_list(ConnAttrs);
+    std::cout << "Remote connection port is " << response->LocalPort << std::endl;
+    
+    attr_list contact_list = create_attr_list();
+    atom_t CM_IP_PORT = -1;
+    atom_t CM_IP_ADDR = -1;
+    CM_IP_ADDR = attr_atom_from_string("IP_ADDR");
+    CM_IP_PORT = attr_atom_from_string("IP_PORT");
+    add_attr(contact_list, CM_IP_ADDR, Attr_Int4, (attr_value)response->IPList[1]);
+    add_attr(contact_list, CM_IP_PORT, Attr_Int4, (attr_value)response->LocalPort);
+    std::cout << "Trying remote connection to ";
+    dump_attr_list(contact_list);
+    std::cout << std::endl;
+    m_conn = CMinitiate_conn(ev_state.cm, contact_list);
+    std::cout << "Result was " << (void*) m_conn  << std::endl;
+
+    CMreturn_buffer(ev_state.cm, response);
     std::cout << std::endl;
     return m_conn;
 }
