@@ -706,6 +706,16 @@ void BP5Deserializer::InstallMetaData(void *MetadataBlock, size_t BlockLen, size
                                         "Internal error or file corruption, no "
                                         "know format for Metadata Block");
     }
+    if (DumpMetadata == -1)
+    {
+        DumpMetadata = (getenv("BP5DumpMetadata") != NULL);
+    }
+    if (DumpMetadata)
+    {
+        printf("\nIncomingMetadatablock from WriterRank %d is %p :\n", (int)WriterRank, MetadataBlock);
+        FMdump_encoded_data(FMFormat_of_original(FFSformat), MetadataBlock, 1024000);
+        printf("\n\n");
+    }
     if (!FFShas_conversion(FFSformat))
     {
         FMContext FMC = FMContext_from_FFS(ReaderFFSContext);
@@ -1704,6 +1714,8 @@ BP5Deserializer::GenerateReadRequests(const bool doAllocTempBuffers, size_t *max
                                 RR.DirectToAppMemory = false;
                             else if (VarRec->Operator != NULL)
                                 RR.DirectToAppMemory = false;
+                            else if (m_WriterIsLittleEndian != helper::IsLittleEndian())
+                                RR.DirectToAppMemory = false;
                             else
                                 RR.DirectToAppMemory =
                                     IsContiguousTransfer(Req, &writer_meta_base->Offsets[StartDim],
@@ -2090,14 +2102,14 @@ void BP5Deserializer::FinalizeGet(const ReadRequest &Read, const bool freeAddr)
             intersectStart[d] += VB->m_MemoryStart[d];
             blockStart[d] += VB->m_MemoryStart[d];
         }
-        helper::NdCopy(VirtualIncomingData, intersectStart, intersectCount, true, true,
-                       (char *)Req.Data, intersectStart, intersectCount, true, true, ElementSize,
+        helper::NdCopy(VirtualIncomingData, intersectStart, intersectCount, true, m_WriterIsLittleEndian,
+                       (char *)Req.Data, intersectStart, intersectCount, true, helper::IsLittleEndian(), ElementSize,
                        intersectStart, blockCount, memoryStart, memoryCount, false);
     }
     else
     {
-        helper::NdCopy(VirtualIncomingData, inStart, inCount, true, true, (char *)Req.Data,
-                       outStart, outCount, true, true, ElementSize, CoreDims(), CoreDims(),
+        helper::NdCopy(VirtualIncomingData, inStart, inCount, true, m_WriterIsLittleEndian, (char *)Req.Data,
+                       outStart, outCount, true, helper::IsLittleEndian(), ElementSize, CoreDims(), CoreDims(),
                        CoreDims(), CoreDims(), false, Req.MemSpace);
     }
     if (freeAddr)
@@ -2128,8 +2140,9 @@ void BP5Deserializer::FinalizeDerivedGets(std::vector<ReadRequest> &Reads)
             auto inStart = std::get<1>(DBlock);
             auto inCount = std::get<2>(DBlock);
             auto values = std::get<0>(DBlock);
-            helper::NdCopy((const char *)values, inStart, inCount, true, true, (char *)Req.Data,
-                           Req.Start, Req.Count, true, true, VarRec->ElementSize, CoreDims(),
+
+            helper::NdCopy((const char *)values, inStart, inCount, true, m_WriterIsLittleEndian, (char *)Req.Data,
+                           Req.Start, Req.Count, true, helper::IsLittleEndian(), VarRec->ElementSize, CoreDims(),
                            CoreDims(), CoreDims(), CoreDims(), false, Req.MemSpace);
             free(std::get<0>(DBlock));
         }
@@ -2209,8 +2222,9 @@ int BP5Deserializer::FindOffset(size_t Dims, const size_t *Size, const size_t *I
  */
 
 BP5Deserializer::BP5Deserializer(bool WriterIsRowMajor, bool ReaderIsRowMajor,
-                                 bool RandomAccessMode, bool FlattenSteps)
+                                 bool WriterIsLittleEndian, bool RandomAccessMode, bool FlattenSteps)
 : m_WriterIsRowMajor{WriterIsRowMajor}, m_ReaderIsRowMajor{ReaderIsRowMajor},
+  m_WriterIsLittleEndian{WriterIsLittleEndian}, 
   m_RandomAccessMode{RandomAccessMode}, m_FlattenSteps{FlattenSteps}
 {
     FMContext Tmp = create_local_FMcontext();

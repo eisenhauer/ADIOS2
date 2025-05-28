@@ -755,6 +755,7 @@ extern void
 ffs_internal_convert_field(FMFieldPtr src_spec, void *src, FMdata_type dest_type, int dest_size, void *dest)
 {
     int float_OK = 1;
+    printf("Converting field, src %p, dest %p, size %d, byte swap %d\n", src, dest, dest_size, src_spec->byte_swap);
     if (dest_type == float_type) {
 	FMfloat_format reverse_src = 
 	    ffs_reverse_float_formats[src_spec->src_float_format];
@@ -1590,6 +1591,7 @@ internal_convert_record(IOConversionPtr conv, ConvStatus conv_status, void *src,
     int i;
     size_t *control_value = NULL;
     if (conv->conversion_type == none_required) return;
+    dump_IOConversion(conv);
     for (i = 0; i < conv->conv_count; i++) {
 	FMTypeDesc *next = &conv->conversions[i].iovar->type_desc;
 	while (next != NULL) {

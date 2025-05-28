@@ -147,6 +147,7 @@ void BP5Reader::ProcessMetadataFromMemory(const char *md)
     if (!m_BP5Deserializer)
     {
         m_BP5Deserializer = new format::BP5Deserializer(m_WriterIsRowMajor, m_ReaderIsRowMajor,
+							m_Minifooter.IsLittleEndian,
                                                         (m_OpenMode == Mode::ReadRandomAccess));
         m_BP5Deserializer->m_Engine = this;
     }
@@ -1243,7 +1244,7 @@ void BP5Reader::UpdateBuffer(const TimePoint &timeoutInstant, const Seconds &pol
         if (!m_BP5Deserializer)
         {
             m_BP5Deserializer =
-                new format::BP5Deserializer(m_WriterIsRowMajor, m_ReaderIsRowMajor,
+                new format::BP5Deserializer(m_WriterIsRowMajor, m_ReaderIsRowMajor, m_Minifooter.IsLittleEndian,
                                             (m_OpenMode != Mode::Read), (m_FlattenSteps));
             m_BP5Deserializer->m_Engine = this;
         }

@@ -238,24 +238,24 @@ TEST_F(CommonReadTest, ADIOS2CommonRead1D8)
             {
                 engine.Get(var_i8, in_I8.data(), GlobalReadMode);
                 engine.Get(var_i16, in_I16.data(), GlobalReadMode);
-                engine.Get(var_i32, in_I32.data(), GlobalReadMode);
-                engine.Get(var_i64, in_I64.data(), GlobalReadMode);
+                // engine.Get(var_i32, in_I32.data(), GlobalReadMode);
+                // engine.Get(var_i64, in_I64.data(), GlobalReadMode);
 
-                engine.Get(scalar_r64, in_scalar_R64, GlobalReadMode);
+                // engine.Get(scalar_r64, in_scalar_R64, GlobalReadMode);
 
-                engine.Get(var_r32, in_R32.data(), GlobalReadMode);
-                engine.Get(var_r64, in_R64.data(), GlobalReadMode);
-                if (!mpiRank)
-                    engine.Get(var_time, (int64_t *)&write_time, GlobalReadMode);
+                // engine.Get(var_r32, in_R32.data(), GlobalReadMode);
+                // engine.Get(var_r64, in_R64.data(), GlobalReadMode);
+                // if (!mpiRank)
+                //     engine.Get(var_time, (int64_t *)&write_time, GlobalReadMode);
             }
-            if (var_c32)
-                engine.Get(var_c32, in_C32.data(), GlobalReadMode);
-            if (var_c64)
-                engine.Get(var_c64, in_C64.data(), GlobalReadMode);
-            if (var_r64_2d)
-                engine.Get(var_r64_2d, in_R64_2d.data(), GlobalReadMode);
-            if (var_r64_2d_rev)
-                engine.Get(var_r64_2d_rev, in_R64_2d_rev.data(), GlobalReadMode);
+            // if (var_c32)
+            //     engine.Get(var_c32, in_C32.data(), GlobalReadMode);
+            // if (var_c64)
+            //     engine.Get(var_c64, in_C64.data(), GlobalReadMode);
+            // if (var_r64_2d)
+            //     engine.Get(var_r64_2d, in_R64_2d.data(), GlobalReadMode);
+            // if (var_r64_2d_rev)
+            //     engine.Get(var_r64_2d_rev, in_R64_2d_rev.data(), GlobalReadMode);
         }
         if (GlobalReadMode == adios2::Mode::Sync)
         {

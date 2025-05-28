@@ -333,7 +333,7 @@ StepStatus SstReader::BeginStep(StepMode Mode, const float timeout_sec)
         m_CurrentStepMetaData = SstGetCurMetadata(m_Input);
         if (!m_BP5Deserializer)
         {
-            m_BP5Deserializer = new format::BP5Deserializer(m_WriterIsRowMajor, Params.IsRowMajor);
+            m_BP5Deserializer = new format::BP5Deserializer(m_WriterIsRowMajor, Params.IsRowMajor, /* writer littleendian */true);
             m_BP5Deserializer->m_Engine = this;
         }
         SstMetaMetaList MMList = SstGetNewMetaMetaData(m_Input, SstCurrentStep(m_Input));
