@@ -1322,7 +1322,8 @@ void BP5Reader::UpdateBuffer(const TimePoint &timeoutInstant, const Seconds &pol
                              const Seconds &timeoutSeconds)
 {
     size_t newIdxSize = 0;
-    m_MetadataIndex.Reset(true, false);
+    if (!getenv("ReadByStep"))
+        m_MetadataIndex.Reset(true, false);
     if (m_Comm.Rank() == 0)
     {
         /* Read metadata index table into memory */
@@ -1346,6 +1347,7 @@ void BP5Reader::UpdateBuffer(const TimePoint &timeoutInstant, const Seconds &pol
 
     size_t parsedIdxSize = 0;
     const auto stepsBefore = m_StepsCount;
+    static size_t ReadAheadStepsCount;
     if (newIdxSize > 0)
     {
         /* Parse metadata index table */
@@ -1370,10 +1372,29 @@ void BP5Reader::UpdateBuffer(const TimePoint &timeoutInstant, const Seconds &pol
                                             (m_OpenMode != Mode::Read), (m_FlattenSteps));
             m_BP5Deserializer->m_Engine = this;
         }
+        if (getenv("ReadByStep"))
+        {
+            m_WriterIsActive = true;
+            ReadAheadStepsCount = m_StepsCount;
+        }
     }
+    else
+    {
 
+        if (getenv("ReadByStep") && (m_StepsCount < ReadAheadStepsCount))
+        {
+            if (ReadAheadStepsCount != 0)
+            {
+                m_FilteredMetadataInfo.clear();
+                m_FilteredMetadataInfo.push_back(std::make_pair(
+                    m_MetadataIndexTable[m_StepsCount][0], m_MetadataIndexTable[m_StepsCount][1]));
+            }
+            m_StepsCount++;
+        }
+    }
     if (m_StepsCount > stepsBefore)
     {
+        size_t BCastSize = (size_t)-1, BCastPos = (size_t)-1;
         m_Metadata.Reset(true, false);
         m_MetaMetadata.Reset(true, false);
         if (m_Comm.Rank() == 0)
@@ -1393,6 +1414,19 @@ void BP5Reader::UpdateBuffer(const TimePoint &timeoutInstant, const Seconds &pol
             do
             {
                 actualFileSize = m_MDFileManager.GetFileSize(0);
+                if (getenv("ReadByStep"))
+                {
+                    static int steps = 0;
+                    actualFileSize =
+                        m_MetadataIndexTable[steps][0] + m_MetadataIndexTable[steps][1];
+                    m_FilteredMetadataInfo.clear();
+                    m_FilteredMetadataInfo.push_back(std::make_pair(
+                        m_MetadataIndexTable[steps][0], m_MetadataIndexTable[steps][1]));
+                    expectedMinFileSize = actualFileSize;
+                    steps++;
+                    m_StepsCount = steps;
+                    break;
+                }
                 if (actualFileSize >= expectedMinFileSize)
                 {
                     break;
@@ -1407,6 +1441,13 @@ void BP5Reader::UpdateBuffer(const TimePoint &timeoutInstant, const Seconds &pol
                 size_t mempos = 0;
                 for (auto p : m_FilteredMetadataInfo)
                 {
+                    if (getenv("ReadByStep") && (p.first != 0))
+                    {
+                        mempos = p.first;
+                        BCastSize = p.second;
+                        BCastPos = p.first;
+                        m_Metadata.Resize(BCastPos + BCastSize, "");
+                    }
                     m_JSONProfiler.AddBytes("metadataread", p.second);
                     m_MDFileManager.ReadFile(m_Metadata.Data() + mempos, p.second, p.first);
                     mempos += p.second;
@@ -1449,6 +1490,21 @@ void BP5Reader::UpdateBuffer(const TimePoint &timeoutInstant, const Seconds &pol
                 m_JSONProfiler.Stop("MetaMetaDataRead");
             }
         }
+        else
+        {
+            if (getenv("ReadByStep"))
+            {
+                static int steps = 0;
+                steps++;
+                m_StepsCount = steps;
+                if (steps > 1)
+                {
+                    BCastSize = m_MetadataIndexTable[steps - 1][1];
+                    BCastPos = m_MetadataIndexTable[steps - 1][0];
+                    m_Metadata.Resize(BCastPos + BCastSize, "");
+                }
+            }
+        }
 
         // broadcast metadata index buffer to all ranks from zero
         m_Comm.BroadcastVector(m_MetaMetadata.m_Buffer);
@@ -1462,7 +1518,14 @@ void BP5Reader::UpdateBuffer(const TimePoint &timeoutInstant, const Seconds &pol
             m_Metadata.Resize(inputSize, "metadata broadcast");
         }
 
-        m_Comm.Bcast(m_Metadata.Data(), inputSize, 0);
+        if (BCastSize == (size_t)-1)
+        {
+            m_Comm.Bcast(m_Metadata.Data(), inputSize, 0);
+        }
+        else
+        {
+            m_Comm.Bcast(m_Metadata.Data() + BCastPos, BCastSize, 0);
+        }
 
         if ((m_OpenMode == Mode::ReadRandomAccess) || m_FlattenSteps)
         {
@@ -1637,8 +1700,8 @@ size_t BP5Reader::ParseMetadataIndex(format::BufferSTL &bufferSTL, const size_t 
                 // absolute pos in file before read
                 ptrs.push_back(MetadataPos);
                 m_MetadataIndexTable[m_StepsCount] = ptrs;
-#ifdef DUMPDATALOCINFO
-                for (uint64_t i = 0; i < m_WriterCount; i++)
+#ifndef DUMPDATALOCINFO
+                for (uint64_t i = 0; i < m_LastWriterCount; i++)
                 {
                     size_t DataPosPos = ptrs[3];
                     std::cout << "Writer " << i << " data at ";
