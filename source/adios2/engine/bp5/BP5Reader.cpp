@@ -167,6 +167,8 @@ void BP5Reader::ProcessMetadataFromMemory(const char *md)
     }
 }
 
+static size_t PreReadBase = 0;
+
 void BP5Reader::InstallMetadataForTimestep(size_t Step)
 {
     size_t pgstart = m_MetadataIndexTable[Step][0];
@@ -195,8 +197,9 @@ void BP5Reader::InstallMetadataForTimestep(size_t Step)
         size_t ThisADSize =
             helper::ReadValue<uint64_t>(m_Metadata.Data(), Position, m_Minifooter.IsLittleEndian);
         char *ThisAD = m_Metadata.Data() + MDPosition;
-        if (ThisADSize > 0)
+        if (ThisADSize > 0) {
             m_BP5Deserializer->InstallAttributeData(ThisAD, ThisADSize);
+	}
         MDPosition += ThisADSize;
     }
 }
@@ -299,8 +302,9 @@ void BP5Reader::ParallelInstallMetadataForTimestep(size_t Step)
         size_t ThisADSize =
             helper::ReadValue<uint64_t>(m_Metadata.Data(), Position, m_Minifooter.IsLittleEndian);
         char *ThisAD = m_Metadata.Data() + MDPosition;
-        if (ThisADSize > 0)
+        if (ThisADSize > 0) {
             m_BP5Deserializer->InstallAttributeData(ThisAD, ThisADSize);
+	}
         MDPosition += ThisADSize;
     }
 }
@@ -1318,33 +1322,44 @@ void BP5Reader::InstallMetaMetaData(format::BufferSTL buffer)
     m_MetaMetaDataFileAlreadyProcessedSize = Position;
 }
 
+static int ReadByStep = -1;
 void BP5Reader::UpdateBuffer(const TimePoint &timeoutInstant, const Seconds &pollSeconds,
                              const Seconds &timeoutSeconds)
 {
     size_t newIdxSize = 0;
-    if (!getenv("ReadByStep"))
-        m_MetadataIndex.Reset(true, false);
-    if (m_Comm.Rank() == 0)
-    {
-        /* Read metadata index table into memory */
-        const size_t metadataIndexFileSize = m_MDIndexFileManager.GetFileSize(0);
-        newIdxSize = metadataIndexFileSize - m_MDIndexFileAlreadyReadSize;
-        if (metadataIndexFileSize > m_MDIndexFileAlreadyReadSize)
-        {
-            m_MetadataIndex.m_Buffer.resize(newIdxSize);
-            m_MDIndexFileManager.ReadFile(m_MetadataIndex.m_Buffer.data(), newIdxSize,
-                                          m_MDIndexFileAlreadyReadSize);
-        }
-        else
-        {
-            m_MetadataIndex.m_Buffer.resize(0);
-        }
+    bool DoMDIndex = true;
+    
+	if (ReadByStep == -1) {
+	    ReadByStep = (getenv("ReadByStep") != NULL);
+	    std::cout << "Read by Step " << ReadByStep << std::endl;
+	}
+    if (ReadByStep) DoMDIndex = (m_StepsCount == m_AbsStepsInFile);
+
+    if (DoMDIndex) {
+	m_MetadataIndex.Reset(true, false);
+	if (ReadByStep) PreReadBase = m_MDFileAlreadyReadSize;
+	if (m_Comm.Rank() == 0)
+	    {
+		/* Read metadata index table into memory */
+		const size_t metadataIndexFileSize = m_MDIndexFileManager.GetFileSize(0);
+		newIdxSize = metadataIndexFileSize - m_MDIndexFileAlreadyReadSize;
+		
+		if (metadataIndexFileSize > m_MDIndexFileAlreadyReadSize)
+	    {
+		m_MetadataIndex.m_Buffer.resize(newIdxSize);
+		m_MDIndexFileManager.ReadFile(m_MetadataIndex.m_Buffer.data(), newIdxSize,
+					      m_MDIndexFileAlreadyReadSize);
+	    }
+		else
+	    {
+		m_MetadataIndex.m_Buffer.resize(0);
+	    }
+	    }
+
+	// broadcast metadata index buffer to all ranks from zero
+	m_Comm.BroadcastVector(m_MetadataIndex.m_Buffer);
+	newIdxSize = m_MetadataIndex.m_Buffer.size();
     }
-
-    // broadcast metadata index buffer to all ranks from zero
-    m_Comm.BroadcastVector(m_MetadataIndex.m_Buffer);
-    newIdxSize = m_MetadataIndex.m_Buffer.size();
-
     size_t parsedIdxSize = 0;
     const auto stepsBefore = m_StepsCount;
     static size_t ReadAheadStepsCount;
@@ -1372,7 +1387,7 @@ void BP5Reader::UpdateBuffer(const TimePoint &timeoutInstant, const Seconds &pol
                                             (m_OpenMode != Mode::Read), (m_FlattenSteps));
             m_BP5Deserializer->m_Engine = this;
         }
-        if (getenv("ReadByStep"))
+        if (ReadByStep)
         {
             m_WriterIsActive = true;
             ReadAheadStepsCount = m_StepsCount;
@@ -1381,7 +1396,7 @@ void BP5Reader::UpdateBuffer(const TimePoint &timeoutInstant, const Seconds &pol
     else
     {
 
-        if (getenv("ReadByStep") && (m_StepsCount < ReadAheadStepsCount))
+        if (ReadByStep && (m_StepsCount < ReadAheadStepsCount))
         {
             if (ReadAheadStepsCount != 0)
             {
@@ -1414,7 +1429,7 @@ void BP5Reader::UpdateBuffer(const TimePoint &timeoutInstant, const Seconds &pol
             do
             {
                 actualFileSize = m_MDFileManager.GetFileSize(0);
-                if (getenv("ReadByStep"))
+                if (ReadByStep)
                 {
                     static int steps = 0;
                     actualFileSize =
@@ -1441,15 +1456,15 @@ void BP5Reader::UpdateBuffer(const TimePoint &timeoutInstant, const Seconds &pol
                 size_t mempos = 0;
                 for (auto p : m_FilteredMetadataInfo)
                 {
-                    if (getenv("ReadByStep") && (p.first != 0))
+                    if (ReadByStep && (p.first != 0))
                     {
                         mempos = p.first;
                         BCastSize = p.second;
-                        BCastPos = p.first;
+                        BCastPos = mempos;
                         m_Metadata.Resize(BCastPos + BCastSize, "");
                     }
                     m_JSONProfiler.AddBytes("metadataread", p.second);
-                    m_MDFileManager.ReadFile(m_Metadata.Data() + mempos, p.second, p.first);
+                    m_MDFileManager.ReadFile(m_Metadata.Data() + mempos, p.second, p.first + PreReadBase);
                     mempos += p.second;
                 }
                 m_MDFileAlreadyReadSize = expectedMinFileSize;
@@ -1492,7 +1507,7 @@ void BP5Reader::UpdateBuffer(const TimePoint &timeoutInstant, const Seconds &pol
         }
         else
         {
-            if (getenv("ReadByStep"))
+            if (ReadByStep)
             {
                 static int steps = 0;
                 steps++;
@@ -1700,7 +1715,7 @@ size_t BP5Reader::ParseMetadataIndex(format::BufferSTL &bufferSTL, const size_t 
                 // absolute pos in file before read
                 ptrs.push_back(MetadataPos);
                 m_MetadataIndexTable[m_StepsCount] = ptrs;
-#ifndef DUMPDATALOCINFO
+#ifdef DUMPDATALOCINFO
                 for (uint64_t i = 0; i < m_LastWriterCount; i++)
                 {
                     size_t DataPosPos = ptrs[3];
