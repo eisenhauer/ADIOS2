@@ -1456,7 +1456,7 @@ void BP5Reader::UpdateBuffer(const TimePoint &timeoutInstant, const Seconds &pol
                 size_t mempos = 0;
                 for (auto p : m_FilteredMetadataInfo)
                 {
-                    if (ReadByStep && (p.first != 0))
+                    if (ReadByStep && ((p.first != 0) || (m_StepsCount > 0)))
                     {
                         mempos = p.first;
                         BCastSize = p.second;
