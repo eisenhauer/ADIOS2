@@ -9,6 +9,7 @@
 #include "BufferFFS.h"
 #include <cstdlib>
 #include <cstring>
+#include <iostream>
 
 namespace adios2
 {
@@ -17,11 +18,17 @@ namespace format
 
 BufferFFS::BufferFFS(FFSBuffer Buf, void *data, size_t len) : Buffer("BufferFFS", len)
 {
+    std::cout << "Buffer FFS created with Buf = " << (void *)Buf << "  data = " << data
+              << std::endl;
     m_buffer = Buf;
     m_data = data;
 }
 
-BufferFFS::~BufferFFS() { free_FFSBuffer(m_buffer); }
+BufferFFS::~BufferFFS()
+{
+    std::cout << "Freeing Buffer FFS  = " << (void *)m_buffer << std::endl;
+    free_FFSBuffer(m_buffer);
+}
 
 char *BufferFFS::Data() noexcept { return (char *)m_data; }
 

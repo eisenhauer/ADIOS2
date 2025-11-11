@@ -101,6 +101,7 @@ add_subdirectory(operations)
 set(CTEST_TEST_TIMEOUT 10)
 
 bp_gtest_add_tests_helper(WriteReadADIOS2 MPI_ALLOW)
+bp_gtest_add_tests_helper(WriteNoData MPI_ONLY)
 async_gtest_add_tests_helper(WriteReadADIOS2 MPI_ALLOW)
 
 gtest_add_tests_helper(WriteReadFlatten MPI_ONLY BP Engine.BP. .BP5 WORKING_DIRECTORY ${BP5_DIR} EXTRA_ARGS "BP5" )
