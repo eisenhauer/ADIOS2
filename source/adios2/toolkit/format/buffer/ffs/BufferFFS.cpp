@@ -18,7 +18,7 @@ namespace format
 
 BufferFFS::BufferFFS(FFSBuffer Buf, void *data, size_t len) : Buffer("BufferFFS", len)
 {
-    std::cout << "Buffer FFS created with Buf = " << (void *)Buf << "  data = " << data
+    std::cout << "Buffer " << (void*)this << " FFS created with Buf = " << (void *)Buf << "  data = " << data
               << std::endl;
     m_buffer = Buf;
     m_data = data;
@@ -26,8 +26,9 @@ BufferFFS::BufferFFS(FFSBuffer Buf, void *data, size_t len) : Buffer("BufferFFS"
 
 BufferFFS::~BufferFFS()
 {
-    std::cout << "Freeing Buffer FFS  = " << (void *)m_buffer << std::endl;
+    std::cout << "Freeing " << (void*)this << " Buffer FFS  = " << (void *)m_buffer << std::endl;
     free_FFSBuffer(m_buffer);
+    std::cout << "Done Freeing " << (void*)this << " Buffer FFS  = " << (void *)m_buffer  << "  data = " << (void*) m_data << std::endl;
 }
 
 char *BufferFFS::Data() noexcept { return (char *)m_data; }

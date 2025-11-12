@@ -1073,6 +1073,7 @@ void BP5Writer::EndStep()
     {
         m_IO.m_ADIOS.RecordOutputStep(m_Name, UnknownStep, UnknownTime);
     }
+    std::cout << "TSInfo going out of scope : AttrEncodeBuffer " << (void*)TSInfo.AttributeEncodeBuffer.get() << " MetaEncodeBuffer " << (void*)TSInfo.MetaEncodeBuffer.get() << std::endl;
     /* Seconds ts2 = Now() - m_EngineStart;
      std::cout << "END STEP ended at: " << ts2.count() << std::endl;*/
 }

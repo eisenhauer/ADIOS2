@@ -1410,6 +1410,7 @@ BP5Serializer::TimestepInfo BP5Serializer::CloseTimestep(int timestep, bool forc
     CollectFinalShapeValues();
 
     void *MetaDataBlock = FFSencode(MetaEncodeBuffer, Info.MetaFormat, MetadataBuf, &MetaDataSize);
+    std::cout << "Create buffer ffs with MetaDatablock " << MetaDataBlock << std::endl;
     BufferFFS *Metadata = new BufferFFS(MetaEncodeBuffer, MetaDataBlock, MetaDataSize);
 
     BufferFFS *AttrData = NULL;
@@ -1432,6 +1433,7 @@ BP5Serializer::TimestepInfo BP5Serializer::CloseTimestep(int timestep, bool forc
         AttributeEncodeBuffer = create_FFSBuffer();
         void *AttributeBlock =
             FFSencode(AttributeEncodeBuffer, GenericAttributeFormat, PendingAttrs, &AttributeSize);
+	std::cout << "Create buffer ffs with attribute block " << AttributeBlock << std::endl;
         AttrData = new BufferFFS(AttributeEncodeBuffer, AttributeBlock, AttributeSize);
         //	FMdump_encoded_data(GenericAttributeFormat, AttributeBlock,
         // 1024000);
