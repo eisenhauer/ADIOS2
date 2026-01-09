@@ -193,11 +193,14 @@ DEFINE_MARGO_RPC_HANDLER(mercury_read_request_handler)
  */
 typedef struct _MercuryCompletionHandle
 {
+    Mercury_RS_Stream RS_Stream;
     hg_handle_t handle;
+    margo_request request;
     void *Buffer;
     size_t Length;
     int Rank;
     int Completed;
+    int AsyncPending; /* 1 if async RPC is still pending */
 } *MercuryCompletionHandle;
 
 /*
@@ -451,21 +454,17 @@ static void *MercuryReadRemoteMemory(CP_Services Svcs, DP_RS_Stream RS_Stream_v,
     MercuryCompletionHandle Handle = malloc(sizeof(struct _MercuryCompletionHandle));
     hg_return_t hret;
     read_request_in_t in;
-    read_request_out_t out;
-    hg_bulk_t local_bulk_handle;
-    hg_size_t hg_length = (hg_size_t)Length;
 
+    /* Store context for WaitForCompletion */
+    Handle->RS_Stream = RS_Stream;
     Handle->Buffer = Buffer;
     Handle->Length = Length;
     Handle->Rank = Rank;
     Handle->Completed = 0;
-
-    /* Create local bulk handle for receiving data */
-    hret = margo_bulk_create(RS_Stream->mid, 1, &Buffer, &hg_length, HG_BULK_WRITE_ONLY,
-                             &local_bulk_handle);
-    assert(hret == HG_SUCCESS);
+    Handle->AsyncPending = 1;
 
     /* Create RPC handle */
+    Handle->handle = HG_HANDLE_NULL;
     hret = margo_create(RS_Stream->mid, RS_Stream->WriterAddrs[Rank], RS_Stream->read_rpc_id,
                         &Handle->handle);
     assert(hret == HG_SUCCESS);
@@ -478,26 +477,11 @@ static void *MercuryReadRemoteMemory(CP_Services Svcs, DP_RS_Stream RS_Stream_v,
     in.rs_stream = (hg_uint64_t)RS_Stream;
     in.requesting_rank = RS_Stream->Rank;
 
-    /* Forward RPC (synchronous) */
-    hret = margo_forward(Handle->handle, &in);
+    /* Forward RPC asynchronously - return immediately */
+    hret = margo_iforward(Handle->handle, &in, &Handle->request);
     assert(hret == HG_SUCCESS);
 
-    /* Get response */
-    hret = margo_get_output(Handle->handle, &out);
-    assert(hret == HG_SUCCESS);
-
-    if (out.ret == 0 && out.bulk_handle != HG_BULK_NULL)
-    {
-        /* Transfer data using bulk transfer */
-        hret = margo_bulk_transfer(RS_Stream->mid, HG_BULK_PULL, RS_Stream->WriterAddrs[Rank],
-                                    out.bulk_handle, 0, local_bulk_handle, 0, Length);
-        assert(hret == HG_SUCCESS);
-        Handle->Completed = 1;
-    }
-
-    margo_free_output(Handle->handle, &out);
-    margo_bulk_free(local_bulk_handle);
-
+    /* Return immediately - actual data retrieval and transfer happens in WaitForCompletion */
     return Handle;
 }
 
@@ -507,11 +491,77 @@ static void *MercuryReadRemoteMemory(CP_Services Svcs, DP_RS_Stream RS_Stream_v,
 static int MercuryWaitForCompletion(CP_Services Svcs, void *Handle_v)
 {
     MercuryCompletionHandle Handle = (MercuryCompletionHandle)Handle_v;
+    hg_return_t hret;
+    read_request_out_t out;
+    int ret = 0;
 
-    /* In our implementation, the read is synchronous, so it's already done */
-    int ret = Handle->Completed;
+    if (!Handle || !Handle->AsyncPending)
+    {
+        if (Handle)
+        {
+            ret = Handle->Completed;
+            free(Handle);
+        }
+        return ret;
+    }
 
-    margo_destroy(Handle->handle);
+    /* Wait for the async RPC to complete */
+    hret = margo_wait(Handle->request);
+    if (hret != HG_SUCCESS)
+    {
+        fprintf(stderr, "Mercury: margo_wait failed with error %d\n", hret);
+        goto cleanup;
+    }
+
+    /* Get the RPC output */
+    hret = margo_get_output(Handle->handle, &out);
+    if (hret != HG_SUCCESS)
+    {
+        fprintf(stderr, "Mercury: margo_get_output failed with error %d\n", hret);
+        goto cleanup;
+    }
+
+    /* Perform bulk data transfer if available */
+    if (out.ret == 0 && out.bulk_handle != HG_BULK_NULL)
+    {
+        hg_bulk_t local_bulk_handle;
+        hg_size_t hg_length = (hg_size_t)Handle->Length;
+
+        /* Create local bulk handle for receiving data */
+        hret = margo_bulk_create(Handle->RS_Stream->mid, 1, &Handle->Buffer, &hg_length,
+                                 HG_BULK_WRITE_ONLY, &local_bulk_handle);
+        if (hret == HG_SUCCESS)
+        {
+            /* Pull data from writer */
+            hret = margo_bulk_transfer(Handle->RS_Stream->mid, HG_BULK_PULL,
+                                       Handle->RS_Stream->WriterAddrs[Handle->Rank],
+                                       out.bulk_handle, 0, local_bulk_handle, 0, Handle->Length);
+            if (hret == HG_SUCCESS)
+            {
+                Handle->Completed = 1;
+            }
+            else
+            {
+                fprintf(stderr, "Mercury: margo_bulk_transfer failed with error %d\n", hret);
+            }
+            margo_bulk_free(local_bulk_handle);
+        }
+        else
+        {
+            fprintf(stderr, "Mercury: margo_bulk_create failed with error %d\n", hret);
+        }
+    }
+
+    margo_free_output(Handle->handle, &out);
+    ret = Handle->Completed;
+
+cleanup:
+    Handle->AsyncPending = 0;
+    if (Handle->handle != HG_HANDLE_NULL)
+    {
+        margo_destroy(Handle->handle);
+        Handle->handle = HG_HANDLE_NULL;
+    }
     free(Handle);
 
     return ret;
