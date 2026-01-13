@@ -223,10 +223,21 @@ static DP_RS_Stream MercuryInitReader(CP_Services Svcs, void *CP_Stream,
     SMPI_Comm_rank(comm, &Stream->Rank);
 
     /* Initialize Mercury/Margo
-     * Using shared memory transport for local communication
+     * Use configured protocol, defaulting to tcp if not specified
+     * Common values: "tcp", "ofi+tcp", "ofi+verbs" (IB/RoCE), "ofi+gni" (Cray), etc.
+     * Note: Use "na+sm" for tcp+shared memory if you want intra-node optimization
+     * For RDMA, set MercuryProtocol engine parameter to appropriate transport (e.g., "ofi+verbs")
      */
-    Stream->mid = margo_init("na+sm", MARGO_SERVER_MODE, 1, 1);
-    assert(Stream->mid != MARGO_INSTANCE_NULL);
+    const char *protocol = Params->MercuryProtocol ? Params->MercuryProtocol : "tcp";
+    Stream->mid = margo_init(protocol, MARGO_SERVER_MODE, 1, 1);
+    if (Stream->mid == MARGO_INSTANCE_NULL)
+    {
+        Svcs->verbose(CP_Stream, DPCriticalVerbose,
+                      "Failed to initialize Mercury with protocol '%s'\n", protocol);
+        free(Stream);
+        free(Contact);
+        return NULL;
+    }
 
     /* Get self address string */
     mercury_addr_str = malloc(addr_str_size);
@@ -299,9 +310,19 @@ static DP_WS_Stream MercuryInitWriter(CP_Services Svcs, void *CP_Stream, struct 
     Stream->CP_Stream = CP_Stream;
     SMPI_Comm_rank(comm, &Stream->Rank);
 
-    /* Initialize Mercury/Margo */
-    Stream->mid = margo_init("na+sm", MARGO_SERVER_MODE, 1, 1);
-    assert(Stream->mid != MARGO_INSTANCE_NULL);
+    /* Initialize Mercury/Margo
+     * Use configured protocol, defaulting to tcp if not specified
+     * For RDMA, set MercuryProtocol engine parameter to appropriate transport (e.g., "ofi+verbs")
+     */
+    const char *protocol = Params->MercuryProtocol ? Params->MercuryProtocol : "tcp";
+    Stream->mid = margo_init(protocol, MARGO_SERVER_MODE, 1, 1);
+    if (Stream->mid == MARGO_INSTANCE_NULL)
+    {
+        Svcs->verbose(CP_Stream, DPCriticalVerbose,
+                      "Failed to initialize Mercury with protocol '%s'\n", protocol);
+        free(Stream);
+        return NULL;
+    }
 
     /* Register RPC handler */
     Stream->read_rpc_id = MARGO_REGISTER(Stream->mid, "sst_mercury_read", read_request_in_t,
