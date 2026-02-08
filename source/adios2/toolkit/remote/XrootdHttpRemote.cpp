@@ -12,6 +12,7 @@
 #include "adios2/helper/adiosLog.h"
 
 #include <cstring>
+#include <mutex>
 #include <sstream>
 #include <stdexcept>
 
@@ -50,7 +51,9 @@ CurlMultiPool &CurlMultiPool::getInstance()
 
 CurlMultiPool::CurlMultiPool()
 {
-    curl_global_init(CURL_GLOBAL_DEFAULT);
+    // curl_global_init() is NOT called here. It must be called from the main
+    // thread before any worker threads exist (it is not thread-safe). See
+    // XrootdHttpRemote::Open() which calls it via std::call_once.
 
     m_MultiHandle = curl_multi_init();
     if (!m_MultiHandle)
@@ -275,6 +278,15 @@ void XrootdHttpRemote::Open(const std::string hostname, const int32_t port,
                             const std::string filename, const Mode mode, bool RowMajorOrdering,
                             const Params &params)
 {
+#ifdef ADIOS2_HAVE_CURL
+    // curl_global_init() is NOT thread-safe and must be called from the main
+    // thread before any worker threads call into libcurl. Open() is always
+    // called from the main thread during dataset initialization, before
+    // CampaignReader::PerformGets() spawns async threads.
+    static std::once_flag curlGlobalInitFlag;
+    std::call_once(curlGlobalInitFlag, []() { curl_global_init(CURL_GLOBAL_DEFAULT); });
+#endif
+
     m_Filename = filename;
     m_Mode = mode;
     m_RowMajorOrdering = RowMajorOrdering;
@@ -399,8 +411,6 @@ Remote::GetHandle XrootdHttpRemote::Get(const char *VarName, size_t Step, size_t
     }
 
 #ifdef ADIOS2_HAVE_CURL
-    // Get pool reference first to ensure curl_global_init() runs
-    // before any curl_easy_init() calls in CreateEasyHandle()
     CurlMultiPool &pool = CurlMultiPool::getInstance();
 
     AsyncGet *asyncOp = new AsyncGet();
