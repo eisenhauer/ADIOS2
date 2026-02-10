@@ -9,9 +9,10 @@
  */
 
 #include "XrootdHttpRemote.h"
-#include "adios2/helper/adiosLog.h"
 
+#include <cctype>
 #include <cstring>
+#include <iomanip>
 #include <mutex>
 #include <sstream>
 #include <stdexcept>
@@ -51,26 +52,25 @@ CurlMultiPool &CurlMultiPool::getInstance()
 
 CurlMultiPool::CurlMultiPool()
 {
-    // curl_global_init() is NOT called here. It must be called from the main
-    // thread before any worker threads exist (it is not thread-safe). See
-    // XrootdHttpRemote::Open() which calls it via std::call_once.
+    // curl_global_init() must be called before any other curl function.
+    // It is not thread-safe, but C++11 guarantees that static local
+    // initialization (in getInstance()) is serialized, so this constructor
+    // runs exactly once with no concurrent curl calls possible.
+    curl_global_init(CURL_GLOBAL_DEFAULT);
 
     m_MultiHandle = curl_multi_init();
     if (!m_MultiHandle)
     {
-        helper::Log("Remote", "CurlMultiPool", "CurlMultiPool",
-                    "Failed to initialize CURL multi handle", helper::LogMode::FATALERROR);
+        std::cerr << "CurlMultiPool: Failed to initialize CURL multi handle" << std::endl;
         return;
     }
 
     curl_multi_setopt(m_MultiHandle, CURLMOPT_MAXCONNECTS, 50L);
+    curl_multi_setopt(m_MultiHandle, CURLMOPT_MAX_TOTAL_CONNECTIONS, 50L);
     curl_multi_setopt(m_MultiHandle, CURLMOPT_PIPELINING, CURLPIPE_MULTIPLEX);
 
     m_Running = true;
     m_WorkerThread = std::thread(&CurlMultiPool::WorkerLoop, this);
-
-    helper::Log("Remote", "CurlMultiPool", "CurlMultiPool",
-                "Shared CURL multi pool initialized (max 50 connections)", helper::LogMode::INFO);
 }
 
 CurlMultiPool::~CurlMultiPool()
@@ -166,6 +166,7 @@ void CurlMultiPool::ProcessCompletedTransfers()
                 curl_multi_remove_handle(m_MultiHandle, easy);
                 curl_easy_cleanup(easy);
                 easy = nullptr;
+                --m_ActiveHandles;
 
                 asyncOp->promise.set_value(success);
             }
@@ -174,6 +175,7 @@ void CurlMultiPool::ProcessCompletedTransfers()
             {
                 curl_multi_remove_handle(m_MultiHandle, easy);
                 curl_easy_cleanup(easy);
+                --m_ActiveHandles;
             }
         }
     }
@@ -183,11 +185,11 @@ void CurlMultiPool::WorkerLoop()
 {
     while (true)
     {
-        // Drain pending queue into curl multi handle
+        // Drain pending queue into curl multi handle, up to MaxActiveHandles
         {
             std::unique_lock<std::mutex> lock(m_QueueMutex);
 
-            while (!m_PendingQueue.empty())
+            while (!m_PendingQueue.empty() && m_ActiveHandles < MaxActiveHandles)
             {
                 PendingSubmit req = m_PendingQueue.front();
                 m_PendingQueue.pop_front();
@@ -204,6 +206,10 @@ void CurlMultiPool::WorkerLoop()
                         req.asyncOp->headers = nullptr;
                     }
                     curl_easy_cleanup(req.easyHandle);
+                }
+                else
+                {
+                    ++m_ActiveHandles;
                 }
             }
         }
@@ -230,13 +236,7 @@ void CurlMultiPool::WorkerLoop()
 
         // Wait for socket activity (up to 100ms)
         int numfds;
-        CURLMcode mc = curl_multi_wait(m_MultiHandle, nullptr, 0, 100, &numfds);
-        if (mc != CURLM_OK)
-        {
-            helper::Log("Remote", "CurlMultiPool", "WorkerLoop",
-                        "curl_multi_wait failed: " + std::string(curl_multi_strerror(mc)),
-                        helper::LogMode::WARNING);
-        }
+        curl_multi_wait(m_MultiHandle, nullptr, 0, 100, &numfds);
     }
 
     ProcessCompletedTransfers();
@@ -254,24 +254,28 @@ XrootdHttpRemote::~XrootdHttpRemote() { Close(); }
 
 std::string XrootdHttpRemote::UrlEncode(const std::string &str)
 {
-#ifdef ADIOS2_HAVE_CURL
     if (str.empty())
         return str;
 
-    CURL *curl = curl_easy_init();
-    if (!curl)
-        return str;
+    // Pure C++ URL encoding — no curl handle needed, fully thread-safe.
+    std::ostringstream encoded;
+    encoded.fill('0');
+    encoded << std::hex;
 
-    char *encoded = curl_easy_escape(curl, str.c_str(), static_cast<int>(str.length()));
-    std::string result = encoded ? std::string(encoded) : str;
+    for (unsigned char c : str)
+    {
+        if (std::isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~' || c == '/')
+        {
+            encoded << c;
+        }
+        else
+        {
+            encoded << '%' << std::uppercase << std::setw(2) << static_cast<int>(c)
+                    << std::nouppercase;
+        }
+    }
 
-    if (encoded)
-        curl_free(encoded);
-    curl_easy_cleanup(curl);
-    return result;
-#else
-    return str;
-#endif
+    return encoded.str();
 }
 
 void XrootdHttpRemote::Open(const std::string hostname, const int32_t port,
@@ -279,12 +283,11 @@ void XrootdHttpRemote::Open(const std::string hostname, const int32_t port,
                             const Params &params)
 {
 #ifdef ADIOS2_HAVE_CURL
-    // curl_global_init() is NOT thread-safe and must be called from the main
-    // thread before any worker threads call into libcurl. Open() is always
-    // called from the main thread during dataset initialization, before
-    // CampaignReader::PerformGets() spawns async threads.
-    static std::once_flag curlGlobalInitFlag;
-    std::call_once(curlGlobalInitFlag, []() { curl_global_init(CURL_GLOBAL_DEFAULT); });
+    // Ensure the CurlMultiPool singleton is constructed (and curl_global_init
+    // called) before any easy handles are created. C++11 static local init
+    // guarantees this is thread-safe even when Open() is called from worker
+    // threads.
+    CurlMultiPool::getInstance();
 #endif
 
     m_Filename = filename;
@@ -315,10 +318,9 @@ void XrootdHttpRemote::Open(const std::string hostname, const int32_t port,
     urlStream << (m_UseHttps ? "https" : "http") << "://" << hostname << ":" << port << "/ssi";
     m_BaseUrl = urlStream.str();
 
-    std::string protocol = m_UseHttps ? "HTTPS" : "HTTP";
-    helper::Log("Remote", "XrootdHttpRemote", "Open",
-                "Opened " + protocol + " connection to " + m_BaseUrl + " for file " + m_Filename,
-                helper::LogMode::INFO);
+    // Note: helper::Log() uses a global unordered_set without locking,
+    // so it is not safe to call from multiple threads concurrently.
+    // Open() may be called from CampaignReader worker threads in parallel.
 
     m_OpenSuccess = true;
 }
@@ -405,8 +407,6 @@ Remote::GetHandle XrootdHttpRemote::Get(const char *VarName, size_t Step, size_t
 {
     if (!m_OpenSuccess)
     {
-        helper::Log("Remote", "XrootdHttpRemote", "Get", "Connection not open",
-                    helper::LogMode::WARNING);
         return nullptr;
     }
 
@@ -422,16 +422,12 @@ Remote::GetHandle XrootdHttpRemote::Get(const char *VarName, size_t Step, size_t
     if (!easy)
     {
         delete asyncOp;
-        helper::Log("Remote", "XrootdHttpRemote", "Get", "Failed to create CURL handle",
-                    helper::LogMode::WARNING);
         return nullptr;
     }
 
     pool.Submit(easy, asyncOp);
     return static_cast<GetHandle>(asyncOp);
 #else
-    helper::Log("Remote", "XrootdHttpRemote", "Get", "ADIOS2 was not built with CURL support",
-                helper::LogMode::WARNING);
     return nullptr;
 #endif
 }
@@ -445,18 +441,15 @@ bool XrootdHttpRemote::WaitForGet(GetHandle handle)
     bool result = asyncOp->promise.get_future().get();
 
     if (!result)
-        helper::Log("Remote", "XrootdHttpRemote", "WaitForGet", "Get failed: " + asyncOp->errorMsg,
-                    helper::LogMode::WARNING);
+    {
+        // Log to stderr directly — helper::Log() is not thread-safe
+        std::cerr << "XrootdHttpRemote::WaitForGet failed: " << asyncOp->errorMsg << std::endl;
+    }
 
     delete asyncOp;
     return result;
 }
 
-Remote::GetHandle XrootdHttpRemote::Read(size_t Start, size_t Size, void *Dest)
-{
-    helper::Log("Remote", "XrootdHttpRemote", "Read",
-                "Raw byte Read not implemented for HTTP transport", helper::LogMode::WARNING);
-    return nullptr;
-}
+Remote::GetHandle XrootdHttpRemote::Read(size_t Start, size_t Size, void *Dest) { return nullptr; }
 
 } // end namespace adios2

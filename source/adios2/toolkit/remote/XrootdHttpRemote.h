@@ -91,6 +91,8 @@ private:
     std::mutex m_QueueMutex;
     std::condition_variable m_QueueCV;
     std::deque<PendingSubmit> m_PendingQueue;
+    size_t m_ActiveHandles = 0;
+    static constexpr size_t MaxActiveHandles = 64;
 };
 
 /**

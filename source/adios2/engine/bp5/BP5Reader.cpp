@@ -631,6 +631,11 @@ void BP5Reader::PerformGets()
                 "Remote file " + m_Name +
                     " cannot be opened. Possible server or file specification error.");
         }
+        // When using a remote, WaitForGet() just blocks on a future —
+        // all actual I/O is driven by the remote's pool thread.
+        // Avoid spawning extra waiter threads (especially under
+        // CampaignReader which already runs many engines in parallel).
+        m_Threads = 1;
     }
 
     if (m_Remote)
@@ -897,33 +902,13 @@ void BP5Reader::PerformRemoteGets()
         return true;
     };
 
-    if (m_Threads > 1 && nHandles > 1)
+    // All handles were already submitted to CurlMultiPool above.
+    // The pool's single worker thread drives all transfers in parallel,
+    // so WaitForGet() just calls future.get().  Spawning extra threads
+    // here would only add overhead without improving throughput.
+    for (auto &handle : handles)
     {
-        size_t nThreads = (m_Threads < nHandles ? m_Threads : nHandles);
-        std::vector<std::future<bool>> futures(nThreads - 1);
-
-        // launch Threads-1 threads to process subsets of handles,
-        // then main thread process the last subset
-        for (size_t tid = 0; tid < nThreads - 1; ++tid)
-        {
-            futures[tid] = std::async(std::launch::async, lf_WaitForGet, tid + 1);
-        }
-
-        // main thread runs last subset of reads
-        lf_WaitForGet(0);
-
-        // wait for all async threads
-        for (auto &f : futures)
-        {
-            f.get();
-        }
-    }
-    else
-    {
-        for (auto &handle : handles)
-        {
-            m_Remote->WaitForGet(handle);
-        }
+        m_Remote->WaitForGet(handle);
     }
 }
 
