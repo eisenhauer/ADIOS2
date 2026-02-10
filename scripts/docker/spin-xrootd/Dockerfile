@@ -11,11 +11,6 @@ RUN dnf install -y cmake git 'xrootd-*' libcurl-devel openssl && \
     dnf clean all && \
     rm -rf /var/cache/dnf
 
-# Copy configuration files from build context (scripts/docker/spin-xrootd/)
-COPY xrootd-http.cfg /etc/xrootd/xrootd-http.cfg
-COPY docker-entrypoint.sh /docker-entrypoint.sh
-RUN chmod +x /docker-entrypoint.sh
-
 # Clone and build ADIOS2 with XRootD and CURL support from GitHub
 ARG ADIOS2_REPO=https://github.com/ornladios/ADIOS2.git
 ARG ADIOS2_BRANCH=master
@@ -42,27 +37,25 @@ RUN git clone --depth 1 --branch ${ADIOS2_BRANCH} ${ADIOS2_REPO} /ADIOS2-src && 
     /ADIOS2-src/build/bin/TestCommonWrite bp5 sample && \
     rm -rf /ADIOS2-src
 
-# Create directories for XRootD with correct ownership for non-root operation
-RUN mkdir -p /var/spool/xrootd /run/xrootd /etc/xrootd/certs /var/log/xrootd && \
-    chown -R 194:194 /var/spool/xrootd /run/xrootd /var/log/xrootd /data
+# Add KSTAR campaign test data (100 runs, ~56MB compressed)
+COPY kstar-data.tar /tmp/kstar-data.tar
+RUN cd /data && tar xf /tmp/kstar-data.tar && rm /tmp/kstar-data.tar
 
-# Generate self-signed SSL certificate at build time
-# This is needed because XRootD's http.exthandler requires TLS to be configured
-# Ownership set to xrootd user (194:194) so non-root container can read the key
-RUN openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-    -keyout /etc/xrootd/certs/server.key \
-    -out /etc/xrootd/certs/server.crt \
-    -subj "/CN=localhost" \
-    -batch && \
-    chmod 600 /etc/xrootd/certs/server.key && \
-    chmod 644 /etc/xrootd/certs/server.crt && \
-    chown -R 194:194 /etc/xrootd/certs
+# --- Everything below here changes frequently, keep after compile ---
+
+# Copy configuration files (after compile so changes don't bust cache)
+COPY xrootd-http.cfg /etc/xrootd/xrootd-http.cfg
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
+
+# Create directories writable by any UID (Spin runs as NERSC user)
+RUN mkdir -p /tmp/adios /var/log/xrootd && \
+    chmod 777 /tmp/adios /var/log/xrootd /data
 
 # Expose HTTP port (Spin Ingress will terminate TLS and forward to this port)
 EXPOSE 8080
 
 # Health check - verify XRootD HTTP is responding
-# We check port 8080 is accepting connections (the /ssi endpoint requires POST data)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD curl -sf -o /dev/null http://localhost:8080/ || exit 1
 
