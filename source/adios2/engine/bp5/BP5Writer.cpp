@@ -425,6 +425,7 @@ void BP5Writer::WriteData(format::BufferV *Data)
         }
         AggTransportData &aggData = m_AggregatorSpecifics.at(GetCacheKey(m_Aggregator));
         aggData.m_FileDataManager.FlushFiles();
+        aggData.m_FileDataManager.FinalizeSegment();
         delete Data;
     }
 }
@@ -1098,6 +1099,7 @@ void BP5Writer::EndStep()
     }
     AggTransportData &aggData = m_AggregatorSpecifics.at(GetCacheKey(m_Aggregator));
     aggData.m_FileDataManager.FlushFiles();
+    aggData.m_FileDataManager.FinalizeSegment();
 
     if (m_Parameters.AggregationType == (int)AggregationType::DataSizeBased)
     {
@@ -1615,6 +1617,15 @@ void BP5Writer::InitMetadataTransports()
         if (m_Parameters.verbose > 0)
         {
             dataTransportParams["verbose"] = std::to_string(m_Parameters.verbose);
+        }
+        // Pass S3 object mode to transport ("multi" or "single")
+        if (!m_Parameters.S3ObjectMode.empty())
+        {
+            dataTransportParams["s3_object_mode"] = m_Parameters.S3ObjectMode;
+        }
+        if (!m_Parameters.S3DirectUploadThreshold.empty())
+        {
+            dataTransportParams["direct_upload_threshold"] = m_Parameters.S3DirectUploadThreshold;
         }
 
         m_DataTransportsParameters.push_back(dataTransportParams);
