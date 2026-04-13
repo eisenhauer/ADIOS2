@@ -249,6 +249,7 @@ set_mach_reset(dill_stream s, char* arch)
 extern void
 dill_free_stream(dill_stream s)
 {
+    JIT_PROTECT(1);  /* ensure execute mode is restored on stream cleanup */
     if (s->p->branch_table.label_locs)
         free(s->p->branch_table.label_locs);
     if (s->p->branch_table.label_name) {
@@ -642,6 +643,7 @@ dill_finalize_package(dill_stream s, int* pkg_len)
     s->p->save_param_count = s->p->c_param_count;
     s->p->c_param_count = 0;
     char* p = dill_build_package(s, pkg_len);
+    JIT_PROTECT(1);  /* restore execute — match dill_finalize behavior */
     return p;
 }
 
@@ -1754,6 +1756,7 @@ dill_dump(dill_stream s)
         int insn_count = 0;
         if ((s->j != s->p->virtual.mach_jump) && (s->p->fp != NULL))
             base = s->p->fp;
+        JIT_PROTECT(0);  /* enable read access for code dump */
         for (p = base; (char*)p < s->p->cur_ip;) {
             int i;
             struct branch_table* t = &s->p->branch_table;
@@ -1773,6 +1776,7 @@ dill_dump(dill_stream s)
             p = (char*)p + l;
             insn_count++;
         }
+        JIT_PROTECT(1);  /* restore execute-only */
         printf("\nDumped %d instructions\n\n", insn_count);
     }
 }
