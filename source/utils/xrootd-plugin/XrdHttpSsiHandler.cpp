@@ -904,7 +904,9 @@ int XrdHttpSsiHandler::ProcessAdminReq(XrdHttpExtReq &req)
                            "  GET /_adios/files  - cached files (JSON)\n"
                            "  GET /_adios/flush  - flush idle cache entries\n"
                            "  GET /_adios/limits - view resource limits\n"
-                           "  GET /_adios/limits?fd=N&md=N - set limits\n";
+                           "  GET /_adios/limits?fd=N&md=N - set limits\n"
+                           "  GET /_adios/accesslog - last 1000 access records (JSONL)\n"
+                           "  GET /_adios/accesslog?limit=N - last N (0 = all)\n";
         return SendResponse(req, body.c_str(), body.size(), "text/plain");
     }
 

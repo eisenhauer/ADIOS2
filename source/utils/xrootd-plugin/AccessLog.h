@@ -35,6 +35,9 @@ public:
     /* Cheap check to gate record construction at the call site. */
     bool Enabled() const { return m_Enabled.load(std::memory_order_relaxed); }
 
+    /* Active log file path; empty when logging is disabled. */
+    const std::string &Path() const { return m_Path; }
+
     /* Pointers reference caller-owned data and need only outlive the call;
      * Log() formats synchronously before returning. */
     struct Record

@@ -5,6 +5,7 @@
  */
 
 #include "AdiosFilePool.h"
+#include "AccessLog.h"
 
 #include "adios2/core/GetContext.h"
 
@@ -13,6 +14,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <dirent.h>
+#include <fstream>
 #include <iostream>
 #include <sys/resource.h>
 #include <sys/stat.h>
@@ -739,6 +741,34 @@ std::string ADIOSFilePool::GetLimitsJSON()
 
 } // end of namespace adios2
 
+namespace
+{
+// Return the last `limit` lines of a file (limit 0 = whole file). Reads only the
+// active segment; rotated segments stay on disk.
+std::string TailFile(const std::string &path, size_t limit)
+{
+    std::ifstream in(path, std::ios::in | std::ios::binary);
+    if (!in)
+    {
+        return "{\"error\": \"cannot open access log\"}\n";
+    }
+    std::vector<std::string> lines;
+    std::string line;
+    while (std::getline(in, line))
+    {
+        lines.push_back(line);
+    }
+    std::string out;
+    size_t start = (limit && lines.size() > limit) ? lines.size() - limit : 0;
+    for (size_t i = start; i < lines.size(); ++i)
+    {
+        out += lines[i];
+        out += '\n';
+    }
+    return out;
+}
+} // namespace
+
 // C-linkage admin functions callable via dlsym from the HTTP handler
 extern "C" {
 const char *ADIOSPoolAdmin(const char *command, const char *query)
@@ -784,10 +814,28 @@ const char *ADIOSPoolAdmin(const char *command, const char *query)
             result = pool.GetLimitsJSON();
         }
     }
+    else if (cmd == "accesslog")
+    {
+        const std::string &path = AccessLog::Instance().Path();
+        if (path.empty())
+        {
+            result = "{\"error\": \"access log disabled\"}\n";
+        }
+        else
+        {
+            size_t limit = 1000; // default: last 1000 records (0 = whole file)
+            size_t pos = q.find("limit=");
+            if (pos != std::string::npos)
+            {
+                limit = strtoull(q.c_str() + pos + 6, nullptr, 10);
+            }
+            result = TailFile(path, limit);
+        }
+    }
     else
     {
         result = "{\"error\": \"unknown command\", \"commands\": "
-                 "[\"stats\", \"files\", \"flush\", \"limits\"]}\n";
+                 "[\"stats\", \"files\", \"flush\", \"limits\", \"accesslog\"]}\n";
     }
     return result.c_str();
 }
