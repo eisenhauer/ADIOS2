@@ -486,9 +486,9 @@ bool XrootdHttpRemote::BatchGet(const std::vector<BatchGetRequest> &requests)
         for (size_t i = 0; i < nVars; i++)
         {
             auto &req = requests[sb.startIdx + i];
-            // Reject a chunk that would overrun dest (stale metadata, wrong-size
-            // reply); destSize 0 = caller gave no expected size.
-            if (req.destSize != 0 && sizes[i] > req.destSize)
+            // Reject a chunk whose size doesn't match dest (stale metadata,
+            // wrong-size reply); destSize 0 = caller gave no expected size.
+            if (req.destSize != 0 && sizes[i] != req.destSize)
             {
                 allOk = false;
                 break;
@@ -517,6 +517,8 @@ Remote::GetHandle XrootdHttpRemote::Get(const char *VarName, size_t Step, size_t
 
     AsyncGet *asyncOp = new AsyncGet();
     asyncOp->destBuffer = dest;
+    // The server returns exactly the selection's bytes; anything else (a
+    // short body from a misrouted or error 200) must not pass as data.
     asyncOp->expectedSize = destSize;
 
     std::string url =
@@ -540,12 +542,13 @@ bool XrootdHttpRemote::WaitForGet(GetHandle handle)
         helper::Throw<std::runtime_error>("Remote", "XrootdHttpRemote", "WaitForGet",
                                           "request failed for file " + m_Filename + ": " + detail);
     }
-    if (asyncOp->exactSize && asyncOp->destSize != asyncOp->expectedSize)
+    if (asyncOp->expectedSize != 0 && asyncOp->destSize != asyncOp->expectedSize)
     {
         helper::Throw<std::runtime_error>("Remote", "XrootdHttpRemote", "WaitForGet",
-                                          "short response for file " + m_Filename + ": received " +
-                                              std::to_string(asyncOp->destSize) + " of " +
-                                              std::to_string(asyncOp->expectedSize) + " bytes");
+                                          "wrong-size response for file " + m_Filename +
+                                              ": received " + std::to_string(asyncOp->destSize) +
+                                              " of " + std::to_string(asyncOp->expectedSize) +
+                                              " bytes");
     }
     return true;
 }
@@ -560,7 +563,6 @@ Remote::GetHandle XrootdHttpRemote::Read(size_t Start, size_t Size, void *Dest)
     AsyncGet *asyncOp = new AsyncGet();
     asyncOp->destBuffer = Dest;
     asyncOp->expectedSize = Size;
-    asyncOp->exactSize = true;
     asyncOp->rangeRead = true;
     asyncOp->rangeOffset = Start;
 

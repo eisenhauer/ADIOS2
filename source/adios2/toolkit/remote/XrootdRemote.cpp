@@ -270,6 +270,18 @@ void myRequest::ProcessResponseData(const XrdSsiErrInfo &eInfo, char *buff, int 
         return;
     }
 
+    // The full response is in; it must be exactly what the caller sized.
+    //
+    if (expectedSize != 0 && static_cast<size_t>(totbytes) != expectedSize)
+    {
+        fprintf(XrdSsiCl::outFile, "Response %d bytes, expected %zu for %s\n", totbytes,
+                expectedSize, rName);
+        promise->set_value(false);
+        Finished();
+        delete this;
+        return;
+    }
+
     // We are done with our request. We avoid calling Finished if we got here
     // because we were cancelled.
     //

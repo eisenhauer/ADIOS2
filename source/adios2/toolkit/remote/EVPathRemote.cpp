@@ -367,12 +367,13 @@ void EVPathRemote::ProcessReadResponse(GetHandle handle)
     }
 
     case adios2::core::Operator::OperatorType::COMPRESS_NULL:
-        // Reject a response that would overrun dest. Compressed cases bound
-        // their output in the operator, not here.
-        if (expectedSize != 0 && read_response_msg->Size > expectedSize)
-            helper::Throw<std::runtime_error>("Remote", "EVPathRemote", "ProcessReadResponse",
-                                              "remote response larger than the expected buffer "
-                                              "size");
+        // Reject a response that doesn't match dest exactly. Compressed cases
+        // bound their output in the operator, not here.
+        if (expectedSize != 0 && read_response_msg->Size != expectedSize)
+            helper::Throw<std::runtime_error>(
+                "Remote", "EVPathRemote", "ProcessReadResponse",
+                "remote response size " + std::to_string(read_response_msg->Size) +
+                    " does not match the expected " + std::to_string(expectedSize) + " bytes");
         memcpy(read_response_msg->Dest, read_response_msg->ReadData, read_response_msg->Size);
         break;
     default:

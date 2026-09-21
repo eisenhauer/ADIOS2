@@ -30,8 +30,7 @@ struct AsyncGet
     std::string errorMsg;
     void *destBuffer = nullptr; ///< single-get dest; null for batch
     size_t destSize = 0;        ///< bytes delivered to destBuffer on success
-    size_t expectedSize = 0;    ///< expected response bytes; 0 = unchecked
-    bool exactSize = false;     ///< a body shorter than expectedSize is an error
+    size_t expectedSize = 0;    ///< exact response bytes; 0 = unchecked
     /** Plain-file byte range: the URL names a file, not a query, and the
      *  backend asks for [rangeOffset, rangeOffset + expectedSize) with the
      *  transport's own range mechanism (HTTP Range, XrdCl offset read). */

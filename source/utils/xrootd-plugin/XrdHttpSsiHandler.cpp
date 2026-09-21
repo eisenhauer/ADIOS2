@@ -997,6 +997,13 @@ int XrdHttpSsiHandler::ProcessAdminReq(XrdHttpExtReq &req)
         return SendResponse(req, body.c_str(), body.size(), "text/plain");
     }
 
+    // An unknown command is a 404, not a 200 with an error body: a misrouted
+    // or misconfigured origin must look broken to the client.
+    if (command != "stats" && command != "files" && command != "flush" && command != "limits")
+    {
+        return SendError(req, 404, "unknown admin command");
+    }
+
     const char *result = adminFunc(command.c_str(), query.c_str());
     return SendResponse(req, result, strlen(result), "application/json");
 }
