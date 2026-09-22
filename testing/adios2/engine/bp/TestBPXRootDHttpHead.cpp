@@ -222,6 +222,20 @@ TEST_F(XRootDHttpHead, MarkerRoutesOnlyMarkedPaths)
     EXPECT_NE(r.httpCode, kHttpOK); // handler: request segment missing
 }
 
+// Admin endpoints: a known command answers 200; an unknown one is a 404,
+// not a 200 with an error body (which a client could mistake for data).
+TEST_F(XRootDHttpHead, AdminStatusCodes)
+{
+    const std::string adminBase = "https://" + std::string(getenv("XRootDHttpsHost")) + "/_adios/";
+    FetchResult r;
+    ASSERT_TRUE(Fetch(adminBase + "stats", false, r));
+    EXPECT_EQ(r.httpCode, kHttpOK);
+    EXPECT_FALSE(r.body.empty());
+    FetchResult bad;
+    ASSERT_TRUE(Fetch(adminBase + "nosuchcommand", false, bad));
+    EXPECT_EQ(bad.httpCode, 404);
+}
+
 int main(int argc, char **argv)
 {
     ::testing::InitGoogleTest(&argc, argv);
