@@ -33,6 +33,12 @@ public:
                                         std::vector<size_t> &MetaEncodeSize,
                                         std::vector<uint64_t> &WriterDataPositions);
 
+    /** Split comm into about sqrt(Size) groups of consecutive ranks (groupComm)
+     * and a comm of the groups' rank 0s in rank order (groupLeaderComm), as
+     * GathervArraysTwoLevel expects. */
+    static void InitTwoLevelComms(const helper::Comm &comm, helper::Comm &groupComm,
+                                  helper::Comm &groupLeaderComm);
+
     static void GathervArraysTwoLevel(helper::Comm &groupComm, helper::Comm &groupLeaderComm,
                                       adios2::profiling::JSONProfiler &Profiler,
                                       uint64_t *MyContrib, size_t LocalSize,

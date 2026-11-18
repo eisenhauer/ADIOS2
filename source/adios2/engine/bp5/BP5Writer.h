@@ -235,8 +235,8 @@ private:
     helper::Comm m_CommAggregators;
 
     /* two-level metadata aggregation */
-    aggregator::MPIChain m_AggregatorMetadata; // first level
-    helper::Comm m_CommMetadataAggregators;    // second level
+    helper::Comm m_CommMetadataGroup;       // first level
+    helper::Comm m_CommMetadataAggregators; // second level
 
     adios2::profiling::JSONProfiler m_Profiler;
 

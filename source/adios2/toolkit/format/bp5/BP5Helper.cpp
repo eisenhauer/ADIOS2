@@ -7,7 +7,8 @@
 #include "BP5Helper.h"
 #include "adios2/helper/adiosFunctions.h"
 #include <adios2sys/MD5.h> // Include the MD5 header
-#include <iomanip>         // put_time
+#include <cmath>
+#include <iomanip> // put_time
 
 #include "fm.h"
 
@@ -282,6 +283,33 @@ void BP5Helper::BreakdownIncomingMData(const std::vector<size_t> &RecvCounts,
         if (pos != sum)
             throw std::logic_error("Bad deserialization");
     }
+}
+
+void BP5Helper::InitTwoLevelComms(const helper::Comm &comm, helper::Comm &groupComm,
+                                  helper::Comm &groupLeaderComm)
+{
+    const size_t rank = static_cast<size_t>(comm.Rank());
+    const size_t size = static_cast<size_t>(comm.Size());
+    const size_t groups = static_cast<size_t>(floor(sqrt((double)size)));
+
+    // Groups [0,r) have q+1 ranks, groups [r,groups) have q
+    const size_t q = size / groups;
+    const size_t r = size % groups;
+    const size_t firstInSmallGroups = r * (q + 1);
+    size_t leader;
+    if (rank >= firstInSmallGroups)
+    {
+        leader = firstInSmallGroups + ((rank - firstInSmallGroups) / q) * q;
+    }
+    else
+    {
+        leader = (rank / (q + 1)) * (q + 1);
+    }
+    groupComm = comm.Split(static_cast<int>(leader), static_cast<int>(rank),
+                           "creating metadata group comm in InitTwoLevelComms");
+    // only the comm of the groups' rank 0s is used
+    groupLeaderComm =
+        comm.Split(groupComm.Rank(), 0, "creating metadata group leader comm in InitTwoLevelComms");
 }
 
 void BP5Helper::GathervArraysTwoLevel(helper::Comm &groupComm, helper::Comm &groupLeaderComm,

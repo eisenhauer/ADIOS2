@@ -964,7 +964,7 @@ void BP5Writer::SelectiveAggregationMetadata(format::BP5Serializer::TimestepInfo
             if (m_Comm.Size() > m_Parameters.OneLevelGatherRanksLimit)
             {
                 BP5Helper::GathervArraysTwoLevel(
-                    m_AggregatorMetadata.m_Comm, m_CommMetadataAggregators, m_Profiler,
+                    m_CommMetadataGroup, m_CommMetadataAggregators, m_Profiler,
                     (uint64_t *)TSInfo.MetaEncodeBuffer->Data(), AlignedMetadataSize / 8,
                     AlignedCounts.data(), AlignedCounts.size(), (uint64_t *)ContigMetadata.data(),
                     0);
@@ -991,7 +991,7 @@ void BP5Writer::SelectiveAggregationMetadata(format::BP5Serializer::TimestepInfo
         if (m_Comm.Size() > m_Parameters.OneLevelGatherRanksLimit)
         {
             BP5Helper::GathervArraysTwoLevel(
-                m_AggregatorMetadata.m_Comm, m_CommMetadataAggregators, m_Profiler,
+                m_CommMetadataGroup, m_CommMetadataAggregators, m_Profiler,
                 (uint64_t *)TSInfo.MetaEncodeBuffer->Data(), AlignedMetadataSize / 8, NULL,
                 0, // AlignedCounts.data(), AlignedCounts.size(),
                 nullptr, 0);
@@ -1028,27 +1028,26 @@ void BP5Writer::TwoLevelAggregationMetadata(format::BP5Serializer::TimestepInfo 
             TSInfo.NewMetaMetaBlocks, {m}, {a}, {m_ThisTimestepDataSize}, {m_StartDataPos});
 
         std::string meta1_gather_str =
-            level1_str + "_" + std::to_string(m_AggregatorMetadata.m_Comm.Size());
+            level1_str + "_" + std::to_string(m_CommMetadataGroup.Size());
         m_Profiler.AddTimerWatch(meta1_gather_str, true);
 
-        if (m_AggregatorMetadata.m_Comm.Size() > 1)
+        if (m_CommMetadataGroup.Size() > 1)
         { // level 1
             m_Profiler.Start(meta1_gather_str);
             size_t LocalSize = MetaBuffer.size();
-            std::vector<size_t> RecvCounts = m_AggregatorMetadata.m_Comm.GatherValues(LocalSize, 0);
+            std::vector<size_t> RecvCounts = m_CommMetadataGroup.GatherValues(LocalSize, 0);
             std::vector<char> RecvBuffer;
-            if (m_AggregatorMetadata.m_Comm.Rank() == 0)
+            if (m_CommMetadataGroup.Rank() == 0)
             {
                 uint64_t TotalSize = 0;
                 for (auto &n : RecvCounts)
                     TotalSize += n;
                 RecvBuffer.resize(TotalSize);
             }
-            m_AggregatorMetadata.m_Comm.GathervArrays(MetaBuffer.data(), LocalSize,
-                                                      RecvCounts.data(), RecvCounts.size(),
-                                                      RecvBuffer.data(), 0);
+            m_CommMetadataGroup.GathervArrays(MetaBuffer.data(), LocalSize, RecvCounts.data(),
+                                              RecvCounts.size(), RecvBuffer.data(), 0);
             m_Profiler.Stop(meta1_gather_str);
-            if (m_AggregatorMetadata.m_Comm.Rank() == 0)
+            if (m_CommMetadataGroup.Rank() == 0)
             {
                 std::vector<format::BP5Base::MetaMetaInfoBlock> UniqueMetaMetaBlocks;
                 std::vector<uint64_t> DataSizes;
@@ -1072,7 +1071,7 @@ void BP5Writer::TwoLevelAggregationMetadata(format::BP5Serializer::TimestepInfo 
         m_Profiler.AddTimerWatch(level2_str);
         profiling::ProfilerGuard g(m_Profiler, level2_str);
 
-        if (m_AggregatorMetadata.m_Comm.Rank() == 0)
+        if (m_CommMetadataGroup.Rank() == 0)
         {
             if (m_Parameters.verbose > 2)
             {
@@ -1716,15 +1715,7 @@ void BP5Writer::InitAggregator(const uint64_t DataSize)
     m_Profiler.Stop(init_str);
 
     /* Metadata aggregator for two-level metadata aggregation */
-    {
-        size_t n = static_cast<size_t>(m_Comm.Size());
-        size_t a = (int)floor(sqrt((double)n));
-        m_AggregatorMetadata.Init(a, a, m_Comm);
-        /* chain of rank 0s form the second level of aggregation */
-        int color = m_AggregatorMetadata.m_Comm.Rank();
-        m_CommMetadataAggregators =
-            m_Comm.Split(color, 0, "creating level 2 chain of aggregators at Open");
-    }
+    format::BP5Helper::InitTwoLevelComms(m_Comm, m_CommMetadataGroup, m_CommMetadataAggregators);
 }
 
 void BP5Writer::InitMetadataTransports()
