@@ -372,7 +372,9 @@ static FMStructDescRec CP_WriterResponseStructs[] = {
 static FMField MetaDataPlusDPInfoList[] = {
     {"Metadata", "*SstBlock", sizeof(struct _SstBlock),
      FMOffset(struct _MetadataPlusDPInfo *, Metadata)},
-    {"AttributeData", "*SstBlock", sizeof(struct _SstBlock),
+    {"AttributeBlockCount", "integer", sizeof(int),
+     FMOffset(struct _MetadataPlusDPInfo *, AttributeBlockCount)},
+    {"AttributeData", "SstBlock[AttributeBlockCount]", sizeof(struct _SstBlock),
      FMOffset(struct _MetadataPlusDPInfo *, AttributeData)},
     {"Formats", "*FFSFormatBlock", sizeof(struct FFSFormatBlock),
      FMOffset(struct _MetadataPlusDPInfo *, Formats)},

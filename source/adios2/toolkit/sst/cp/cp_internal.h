@@ -279,6 +279,7 @@ struct FFSFormatBlock
 struct _MetadataPlusDPInfo
 {
     SstData Metadata;
+    int AttributeBlockCount;
     SstData AttributeData;
     FFSFormatList Formats;
     void *DP_TimestepInfo;
@@ -506,7 +507,8 @@ extern SstStream CP_newStream();
 extern void SstInternalProvideTimestep(SstStream s, SstData LocalMetadata, SstData Data,
                                        ssize_t Timestep, FFSFormatList Formats,
                                        DataFreeFunc FreeTimestep, void *FreeClientData,
-                                       SstData AttributeData, DataFreeFunc FreeAttributeData,
+                                       SstData AttributeData, int AttributeBlockCount,
+                                       DataFreeFunc FreeAttributeData,
                                        void *FreeAttributeClientData);
 
 void **CP_consolidateDataToRankZero(SstStream stream, void *local_info, FFSTypeHandle type,

@@ -10,7 +10,9 @@
 #include "adios2/common/ADIOSConfig.h"
 #include "adios2/core/Engine.h"
 #include "adios2/helper/adiosComm.h"
+#include "adios2/toolkit/format/bp5/BP5Helper.h"
 #include "adios2/toolkit/format/bp5/BP5Serializer.h"
+#include "adios2/toolkit/profiling/iochrono/IOChrono.h"
 #include "adios2/toolkit/sst/sst.h"
 
 #include <memory>
@@ -69,11 +71,11 @@ private:
     {
         _SstData data;
         _SstData metadata;
-        _SstData attribute_data;
         SstMetaMetaList MetaMetaBlocks;
         format::BP5Serializer::TimestepInfo *TSInfo;
     };
     format::BP5Serializer m_BP5Serializer;
+    profiling::JSONProfiler m_Profiler;
 
     SstStream m_Output;
     long m_WriterStep = -1;

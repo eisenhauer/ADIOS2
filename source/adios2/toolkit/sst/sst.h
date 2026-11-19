@@ -73,8 +73,9 @@ extern void SstStreamDestroy(SstStream Stream);
 typedef void (*DataFreeFunc)(void *Data);
 extern void SstProvideTimestepMM(SstStream s, SstData LocalMetadata, SstData LocalData,
                                  long Timestep, DataFreeFunc FreeData, void *FreeClientData,
-                                 SstData AttributeData, DataFreeFunc FreeAttribute,
-                                 void *FreeAttributeClientData, SstMetaMetaList MMBlocks);
+                                 SstData AttributeData, int AttributeBlockCount,
+                                 DataFreeFunc FreeAttribute, void *FreeAttributeClientData,
+                                 SstMetaMetaList MMBlocks);
 extern void SstWriterClose(SstStream stream);
 /*  SstWriterDefinitionLock is called once only, on transition from unlock to
  * locked definitions */

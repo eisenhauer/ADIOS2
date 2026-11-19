@@ -21,7 +21,7 @@ namespace engine
 {
 
 SstWriter::SstWriter(IO &io, const std::string &name, const Mode mode, helper::Comm comm)
-: Engine("SstWriter", io, name, mode, std::move(comm))
+: Engine("SstWriter", io, name, mode, std::move(comm)), m_Profiler(m_Comm)
 {
     Init();
 
@@ -98,11 +98,32 @@ void SstWriter::EndStep()
         delete BlockToFree;
     };
 
+    // Only rank 0 sends formats and attributes to readers.  Gather just the
+    // distinct ones there; other ranks pass none.
+    std::vector<format::BP5Base::MetaMetaInfoBlock> UniqueMetaMetaBlocks =
+        TSInfo->NewMetaMetaBlocks;
+    std::vector<core::iovec> AttributeBlocks;
+    if (TSInfo->AttributeEncodeBuffer && TSInfo->AttributeEncodeBuffer->m_FixedSize)
+    {
+        AttributeBlocks.push_back(
+            {TSInfo->AttributeEncodeBuffer->Data(), TSInfo->AttributeEncodeBuffer->m_FixedSize});
+    }
+    std::vector<size_t> MetaEncodeSize = {TSInfo->MetaEncodeBuffer->m_FixedSize};
+    std::vector<uint64_t> WriterDataPositions = {0};
+    format::BP5Helper::BP5AggregateInformation(m_Comm, m_Profiler, UniqueMetaMetaBlocks,
+                                               AttributeBlocks, MetaEncodeSize,
+                                               WriterDataPositions);
+    if (m_Comm.Rank() != 0)
+    {
+        UniqueMetaMetaBlocks.clear();
+        AttributeBlocks.clear();
+    }
+
     BP5DataBlock *newblock = new BP5DataBlock;
     SstMetaMetaList MetaMetaBlocks =
-        (SstMetaMetaList)malloc((TSInfo->NewMetaMetaBlocks.size() + 1) * sizeof(MetaMetaBlocks[0]));
+        (SstMetaMetaList)malloc((UniqueMetaMetaBlocks.size() + 1) * sizeof(MetaMetaBlocks[0]));
     int i = 0;
-    for (const auto &MM : TSInfo->NewMetaMetaBlocks)
+    for (const auto &MM : UniqueMetaMetaBlocks)
     {
         MetaMetaBlocks[i].BlockData = MM.MetaMetaInfo;
         MetaMetaBlocks[i].BlockSize = MM.MetaMetaInfoLen;
@@ -110,7 +131,7 @@ void SstWriter::EndStep()
         MetaMetaBlocks[i].IDSize = MM.MetaMetaIDLen;
         i++;
     }
-    MetaMetaBlocks[TSInfo->NewMetaMetaBlocks.size()] = {NULL, 0, NULL, 0};
+    MetaMetaBlocks[UniqueMetaMetaBlocks.size()] = {NULL, 0, NULL, 0};
     newblock->MetaMetaBlocks = MetaMetaBlocks;
     newblock->metadata.DataSize = TSInfo->MetaEncodeBuffer->m_FixedSize;
     newblock->metadata.block = TSInfo->MetaEncodeBuffer->Data();
@@ -126,19 +147,27 @@ void SstWriter::EndStep()
         newblock->data.block = nullptr;
     }
     newblock->TSInfo = TSInfo;
-    if (TSInfo->AttributeEncodeBuffer)
+    std::vector<_SstData> AttributeData;
+    for (const auto &A : AttributeBlocks)
     {
-        newblock->attribute_data.DataSize = TSInfo->AttributeEncodeBuffer->m_FixedSize;
-        newblock->attribute_data.block = TSInfo->AttributeEncodeBuffer->Data();
-    }
-    else
-    {
-        newblock->attribute_data.DataSize = 0;
-        newblock->attribute_data.block = NULL;
+        AttributeData.push_back({A.iov_len, (char *)A.iov_base});
     }
     SstProvideTimestepMM(m_Output, &newblock->metadata, &newblock->data, m_WriterStep,
-                         lf_FreeBlocks, newblock, &newblock->attribute_data, NULL, newblock,
-                         MetaMetaBlocks);
+                         lf_FreeBlocks, newblock, AttributeData.data(), (int)AttributeData.size(),
+                         NULL, newblock, MetaMetaBlocks);
+    // On rank 0 the distinct blocks are copies; cp has encoded them by now.
+    if (m_Comm.Rank() == 0)
+    {
+        for (auto &MM : UniqueMetaMetaBlocks)
+        {
+            free(MM.MetaMetaInfo);
+            free(MM.MetaMetaID);
+        }
+        for (auto &A : AttributeBlocks)
+        {
+            free((void *)A.iov_base);
+        }
+    }
 }
 
 void SstWriter::PerformPuts() {}

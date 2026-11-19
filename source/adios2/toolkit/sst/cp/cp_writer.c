@@ -1583,10 +1583,12 @@ static void FillMetadataMsg(SstStream Stream, struct _TimestepMetadataMsg *Msg,
             Msg->Metadata[i].DataSize = 0;
             Msg->Metadata[i].block = NULL;
         }
-        SstData Attrs = pointers[i]->AttributeData;
-        if (Attrs && Attrs->DataSize)
+        for (int a = 0; a < pointers[i]->AttributeBlockCount; a++)
         {
-            /* ranks commonly produce identical blocks, log each one once per step */
+            SstData Attrs = &pointers[i]->AttributeData[a];
+            if (!Attrs->DataSize)
+                continue;
+            /* log each distinct block once per step */
             size_t j;
             for (j = StepLogStart; j < Stream->AttributeLogCount; j++)
             {
@@ -1881,8 +1883,8 @@ on reader close:
 extern void SstInternalProvideTimestep(SstStream Stream, SstData LocalMetadata, SstData Data,
                                        ssize_t Timestep, FFSFormatList Formats,
                                        DataFreeFunc FreeTimestep, void *FreeClientData,
-                                       SstData AttributeData, DataFreeFunc FreeAttributeData,
-                                       void *FreeAttributelientData)
+                                       SstData AttributeData, int AttributeBlockCount,
+                                       DataFreeFunc FreeAttributeData, void *FreeAttributelientData)
 {
     void *data_block1, *data_block2;
     MetadataPlusDPInfo *pointers;
@@ -1913,6 +1915,7 @@ extern void SstInternalProvideTimestep(SstStream Stream, SstData LocalMetadata, 
     /* Md is the local contribution to MetaData */
     Md.Formats = Formats;
     Md.Metadata = (SstData)LocalMetadata;
+    Md.AttributeBlockCount = AttributeBlockCount;
     Md.AttributeData = (SstData)AttributeData;
     Md.DP_TimestepInfo = DP_TimestepInfo;
 
@@ -2159,8 +2162,9 @@ extern void SstWriterDefinitionLock(SstStream Stream, long EffectiveTimestep)
 
 extern void SstProvideTimestepMM(SstStream Stream, SstData LocalMetadata, SstData Data,
                                  long Timestep, DataFreeFunc FreeTimestep, void *FreeClientData,
-                                 SstData AttributeData, DataFreeFunc FreeAttributeData,
-                                 void *FreeAttributeClientData, struct _SstMetaMetaBlock *MMBlocks)
+                                 SstData AttributeData, int AttributeBlockCount,
+                                 DataFreeFunc FreeAttributeData, void *FreeAttributeClientData,
+                                 struct _SstMetaMetaBlock *MMBlocks)
 {
     FFSFormatList Formats = NULL;
     while (MMBlocks && MMBlocks->BlockData)
@@ -2175,8 +2179,8 @@ extern void SstProvideTimestepMM(SstStream Stream, SstData LocalMetadata, SstDat
         MMBlocks++;
     }
     SstInternalProvideTimestep(Stream, LocalMetadata, Data, Timestep, Formats, FreeTimestep,
-                               FreeClientData, AttributeData, FreeAttributeData,
-                               FreeAttributeClientData);
+                               FreeClientData, AttributeData, AttributeBlockCount,
+                               FreeAttributeData, FreeAttributeClientData);
     while (Formats)
     {
         FFSFormatList Tmp = Formats->Next;
