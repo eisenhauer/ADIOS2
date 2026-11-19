@@ -7,8 +7,10 @@
 #include "sst_comm.h"
 
 #include "adios2/helper/adiosComm.h"
+#include "adios2/toolkit/format/bp5/BP5Helper.h"
 
 #include <algorithm>
+#include <cstring>
 #include <vector>
 
 #define CASE_FOR_EACH_TYPE(F)                                                                      \
@@ -165,6 +167,17 @@ int SMPI_Gatherv(const void *sendbuf, int sendcount, SMPI_Datatype sendtype, voi
 #undef F
     }
     return ret;
+}
+
+int SMPI_GathervTwoLevel(const void *sendbuf, size_t sendcount, void *recvbuf, SMPI_Comm groupComm,
+                         SMPI_Comm groupLeaderComm, void *profiler)
+{
+    std::vector<uint64_t> contrib((sendcount + 7) / 8, 0);
+    std::memcpy(contrib.data(), sendbuf, sendcount);
+    adios2::format::BP5Helper::GathervArraysTwoLevel(
+        *groupComm, *groupLeaderComm, *static_cast<adios2::profiling::JSONProfiler *>(profiler),
+        contrib.data(), contrib.size(), nullptr, 0, static_cast<uint64_t *>(recvbuf), 0);
+    return 0;
 }
 
 int SMPI_Allgather(const void *sendbuf, int sendcount, SMPI_Datatype sendtype, void *recvbuf,

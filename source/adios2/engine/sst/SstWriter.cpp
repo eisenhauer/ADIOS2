@@ -25,7 +25,18 @@ SstWriter::SstWriter(IO &io, const std::string &name, const Mode mode, helper::C
 {
     Init();
 
-    m_Output = SstWriterOpen(name.c_str(), &Params, &m_Comm);
+    // GathervArraysTwoLevel needs at least two groups, so 4 ranks
+    if ((m_Comm.Size() > Params.OneLevelGatherRanksLimit) && (m_Comm.Size() >= 4))
+    {
+        format::BP5Helper::InitTwoLevelComms(m_Comm, m_CommMetadataGroup,
+                                             m_CommMetadataAggregators);
+        m_Output = SstWriterOpenTwoLevel(name.c_str(), &Params, &m_Comm, &m_CommMetadataGroup,
+                                         &m_CommMetadataAggregators, &m_Profiler);
+    }
+    else
+    {
+        m_Output = SstWriterOpen(name.c_str(), &Params, &m_Comm);
+    }
     if (!m_Output)
     {
         helper::Throw<std::runtime_error>("Engine", "SstWriter", "SstWriter",

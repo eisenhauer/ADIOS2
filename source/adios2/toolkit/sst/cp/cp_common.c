@@ -237,6 +237,11 @@ extern void CP_dumpParams(SstStream Stream, struct _SstParams *Params, int Reade
     fprintf(stderr, "Param -   SpeculativePreloadMode=%s\n",
             SstPreloadModeStr[Params->SpeculativePreloadMode]);
     fprintf(stderr, "Param -   SpecAutoNodeThreshold=%d\n", Params->SpecAutoNodeThreshold);
+    if (!ReaderSide)
+    {
+        fprintf(stderr, "Param -   OneLevelGatherRanksLimit=%d\n",
+                Params->OneLevelGatherRanksLimit);
+    }
     fprintf(stderr, "Param -   ControlModule=%s\n",
             Params->ControlModule ? Params->ControlModule : " (default - Advanced param)");
 }
@@ -659,7 +664,7 @@ void **CP_consolidateDataToRankZero(SstStream Stream, void *LocalInfo, FFSTypeHa
 
     if (Stream->Rank == 0)
     {
-        int TotalLen = 0;
+        size_t TotalLen = 0;
         Displs = malloc(Stream->CohortSize * sizeof(*Displs));
 
         Displs[0] = 0;
@@ -667,7 +672,7 @@ void **CP_consolidateDataToRankZero(SstStream Stream, void *LocalInfo, FFSTypeHa
 
         for (int i = 1; i < Stream->CohortSize; i++)
         {
-            int RoundUp = (RecvCounts[i] + 7) & ~7;
+            size_t RoundUp = (RecvCounts[i] + 7) & ~7;
             Displs[i] = TotalLen;
             TotalLen += RoundUp;
         }
@@ -680,8 +685,17 @@ void **CP_consolidateDataToRankZero(SstStream Stream, void *LocalInfo, FFSTypeHa
      * can gather the data
      */
 
-    SMPI_Gatherv(Buffer, (int)DataSize, SMPI_CHAR, RecvBuffer, RecvCounts, Displs, SMPI_CHAR, 0,
-                 Stream->mpiComm);
+    if (Stream->mpiGroupComm)
+    {
+        /* lays out each rank's block at the same 8-byte-aligned Displs */
+        SMPI_GathervTwoLevel(Buffer, DataSize, RecvBuffer, Stream->mpiGroupComm,
+                             Stream->mpiGroupLeaderComm, Stream->Profiler);
+    }
+    else
+    {
+        SMPI_Gatherv(Buffer, (int)DataSize, SMPI_CHAR, RecvBuffer, RecvCounts, Displs, SMPI_CHAR, 0,
+                     Stream->mpiComm);
+    }
     free_FFSBuffer(Buf);
 
     if (Stream->Rank == 0)

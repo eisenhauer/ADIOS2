@@ -44,6 +44,13 @@ int SMPI_Gather(const void *sendbuf, int sendcount, SMPI_Datatype sendtype, void
 int SMPI_Gatherv(const void *sendbuf, int sendcount, SMPI_Datatype sendtype, void *recvbuf,
                  const size_t *recvcounts, const size_t *displs, SMPI_Datatype recvtype, int root,
                  SMPI_Comm comm);
+/* Gather sendcount bytes from each rank of the parent comm to its rank 0 in two
+ * levels, through groupComm and groupLeaderComm as built by
+ * BP5Helper::InitTwoLevelComms.  Contributions are padded with zeroes to a
+ * multiple of 8 bytes and land in rank order in recvbuf.  profiler is an
+ * adios2::profiling::JSONProfiler. */
+int SMPI_GathervTwoLevel(const void *sendbuf, size_t sendcount, void *recvbuf, SMPI_Comm groupComm,
+                         SMPI_Comm groupLeaderComm, void *profiler);
 int SMPI_Allgather(const void *sendbuf, int sendcount, SMPI_Datatype sendtype, void *recvbuf,
                    int recvcount, SMPI_Datatype recvtype, SMPI_Comm comm);
 int SMPI_Allgatherv(const void *sendbuf, int sendcount, SMPI_Datatype sendtype, void *recvbuf,

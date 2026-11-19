@@ -285,6 +285,14 @@ single reader, but only upon request (with a request being initiated
 by the reader doing BeginStep()).  Normal reader-side rules (like
 BeginStep timeouts) and writer-side rules (like queue limit behavior) apply.
 
+18. ``OneLevelGatherRanksLimit``: Default **6000**.  When the writer
+cohort has more ranks than this, the per-step metadata, and the
+per-rank information gathered when a reader opens the stream, travel
+to writer rank 0 in two levels: first within groups of about
+sqrt(ranks) consecutive ranks, then from the group leaders to rank 0.
+At or below the limit a single MPI gather is used.  Two levels need at
+least 4 writer ranks.  Interpreted only by the SST Writer engine.
+
  ============================= ===================== ====================================================
   Key                           Value Format          Default and Examples
  ============================= ===================== ====================================================
@@ -304,6 +312,7 @@ BeginStep timeouts) and writer-side rules (like queue limit behavior) apply.
   OpenTimeoutSecs               integer               **60**
   SpeculativePreloadMode        string                **AUTO**, ON, OFF
   SpecAutoNodeThreshold         integer               **1**
+  OneLevelGatherRanksLimit      integer               **6000**
  ============================= ===================== ====================================================
 
 The ``SST_REQUIRE_DATAPLANE`` environment variable names a data plane that must be used, overriding ``DataTransport``.  If that data plane is not available the stream fails to open instead of falling back to another one.  It is intended for validating a system or a build, and it must reach every rank, which some launchers do not do by default.

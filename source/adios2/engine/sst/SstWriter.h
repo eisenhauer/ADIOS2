@@ -76,6 +76,9 @@ private:
     };
     format::BP5Serializer m_BP5Serializer;
     profiling::JSONProfiler m_Profiler;
+    /* two-level gathers to rank 0, set up above OneLevelGatherRanksLimit */
+    helper::Comm m_CommMetadataGroup;
+    helper::Comm m_CommMetadataAggregators;
 
     SstStream m_Output;
     long m_WriterStep = -1;

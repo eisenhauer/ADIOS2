@@ -1114,6 +1114,12 @@ static void waitForReaderResponseAndSendQueued(WS_ReaderInfo Reader)
 
 SstStream SstWriterOpen(const char *Name, SstParams Params, SMPI_Comm comm)
 {
+    return SstWriterOpenTwoLevel(Name, Params, comm, NULL, NULL, NULL);
+}
+
+SstStream SstWriterOpenTwoLevel(const char *Name, SstParams Params, SMPI_Comm comm,
+                                SMPI_Comm groupComm, SMPI_Comm groupLeaderComm, void *profiler)
+{
     SstStream Stream;
 
     Stream = CP_newStream();
@@ -1124,6 +1130,9 @@ SstStream SstWriterOpen(const char *Name, SstParams Params, SMPI_Comm comm)
     char *Filename = strdup(Name);
 
     Stream->mpiComm = comm;
+    Stream->mpiGroupComm = groupComm;
+    Stream->mpiGroupLeaderComm = groupLeaderComm;
+    Stream->Profiler = profiler;
 
     SMPI_Comm_rank(Stream->mpiComm, &Stream->Rank);
     SMPI_Comm_size(Stream->mpiComm, &Stream->CohortSize);

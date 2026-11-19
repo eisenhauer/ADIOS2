@@ -155,6 +155,10 @@ struct _SstStream
     CP_Info CPInfo;
 
     SMPI_Comm mpiComm;
+    /* writer only, set for two-level gathers to rank 0 */
+    SMPI_Comm mpiGroupComm;
+    SMPI_Comm mpiGroupLeaderComm;
+    void *Profiler;
     enum StreamRole Role;
 
     /* params */

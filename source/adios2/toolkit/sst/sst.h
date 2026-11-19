@@ -67,6 +67,11 @@ typedef enum
  *  Writer-side operations
  */
 extern SstStream SstWriterOpen(const char *filename, SstParams Params, SMPI_Comm comm);
+/*  As SstWriterOpen, but gathers to rank 0 go through groupComm and
+ *  groupLeaderComm (see SMPI_GathervTwoLevel) */
+extern SstStream SstWriterOpenTwoLevel(const char *filename, SstParams Params, SMPI_Comm comm,
+                                       SMPI_Comm groupComm, SMPI_Comm groupLeaderComm,
+                                       void *profiler);
 
 extern void SstStreamDestroy(SstStream Stream);
 
