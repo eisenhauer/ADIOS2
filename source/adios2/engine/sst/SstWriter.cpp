@@ -25,8 +25,7 @@ SstWriter::SstWriter(IO &io, const std::string &name, const Mode mode, helper::C
 {
     Init();
 
-    // GathervArraysTwoLevel needs at least two groups, so 4 ranks
-    if ((m_Comm.Size() > Params.OneLevelGatherRanksLimit) && (m_Comm.Size() >= 4))
+    if (m_Comm.Size() > Params.OneLevelGatherRanksLimit)
     {
         format::BP5Helper::InitTwoLevelComms(m_Comm, m_CommMetadataGroup,
                                              m_CommMetadataAggregators);

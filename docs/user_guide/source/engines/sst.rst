@@ -290,8 +290,8 @@ cohort has more ranks than this, the per-step metadata, and the
 per-rank information gathered when a reader opens the stream, travel
 to writer rank 0 in two levels: first within groups of about
 sqrt(ranks) consecutive ranks, then from the group leaders to rank 0.
-At or below the limit a single MPI gather is used.  Two levels need at
-least 4 writer ranks.  Interpreted only by the SST Writer engine.
+At or below the limit a single MPI gather is used.  Interpreted only by
+the SST Writer engine.
 
  ============================= ===================== ====================================================
   Key                           Value Format          Default and Examples

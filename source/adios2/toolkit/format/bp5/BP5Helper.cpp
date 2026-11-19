@@ -7,6 +7,7 @@
 #include "BP5Helper.h"
 #include "adios2/helper/adiosFunctions.h"
 #include <adios2sys/MD5.h> // Include the MD5 header
+#include <algorithm>
 #include <cmath>
 #include <iomanip> // put_time
 
@@ -348,6 +349,10 @@ void BP5Helper::GathervArraysTwoLevel(helper::Comm &groupComm, helper::Comm &gro
         groupComm.GathervArrays(MyContrib, LocalSize, RecvCounts.data(), RecvCounts.size(),
                                 RecvBuffer.data(), 0);
     } // level 1
+    else
+    {
+        RecvBuffer.assign(MyContrib, MyContrib + LocalSize);
+    }
     // Profiler.Stop("ES_meta1");
     Profiler.Stop(stepOne);
 
@@ -371,7 +376,7 @@ void BP5Helper::GathervArraysTwoLevel(helper::Comm &groupComm, helper::Comm &gro
         }
         else
         {
-            std::cout << "This should never happen" << std::endl;
+            std::copy(RecvBuffer.begin(), RecvBuffer.end(), OverallRecvBuffer);
         }
     } // level 2
     Profiler.Stop(stepTwo);
