@@ -771,8 +771,9 @@ void queueTimestepMetadataMsgAndNotify(SstStream Stream, struct _TimestepMetadat
         }
     }
 
-    struct _TimestepMetadataList *New = malloc(sizeof(struct _RegisterQueue));
+    struct _TimestepMetadataList *New = malloc(sizeof(*New));
     New->MetadataMsg = tsm;
+    New->ArrivalTime = CP_wallTime();
     New->Next = NULL;
     if (Stream->Timesteps)
     {
@@ -1563,6 +1564,7 @@ static SstStatusValue AdvanceStepInternal(SstStream Stream, SstStepMode mode,
     SstStatusValue ret;
 
     void *free_block;
+    double TStart = CP_wallTime(), TGot = 0, TArrival = 0;
 
     if (Stream->Rank == 0)
     {
@@ -1679,8 +1681,10 @@ static SstStatusValue AdvanceStepInternal(SstStream Stream, SstStepMode mode,
         {
             RootEntry = waitForNextMetadata(Stream, Stream->ReaderTimestep);
         }
+        TGot = CP_wallTime();
         if (RootEntry)
         {
+            TArrival = RootEntry->ArrivalTime;
             msg.TSmsg = RootEntry->MetadataMsg;
             msg.ReturnValue = return_value;
             CP_verbose(Stream, TraceVerbose, "Setting TSmsg to Rootentry value\n");
@@ -1716,6 +1720,14 @@ static SstStatusValue AdvanceStepInternal(SstStream Stream, SstStepMode mode,
         //        AddArrivedMetadataInfo(Stream, &msg);
         ReturnData = CP_distributeDataFromRankZero(
             Stream, &msg, Stream->CPInfo->TimestepDistributionFormat, &free_block);
+        if (Stream->Timing && msg.TSmsg)
+        {
+            fprintf(stderr,
+                    "SST_TIMING reader step %zd enter %.6f arrived %.6f got %.6f distribute %.6f "
+                    "distribute_bytes %zu\n",
+                    msg.TSmsg->Timestep, TStart, TArrival, TGot, CP_wallTime() - TGot,
+                    Stream->TimingDistributeBytes);
+        }
     }
     else
     {

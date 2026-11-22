@@ -645,7 +645,9 @@ void **CP_consolidateDataToRankZero(SstStream Stream, void *LocalInfo, FFSTypeHa
     {
         RecvCounts = malloc(Stream->CohortSize * sizeof(*RecvCounts));
     }
+    double TimingStart = CP_wallTime();
     SMPI_Gather(&DataSize, 1, SMPI_SIZE_T, RecvCounts, 1, SMPI_SIZE_T, 0, Stream->mpiComm);
+    double TimingSizesDone = CP_wallTime();
 
     /*
      * Figure out the total length of block
@@ -671,6 +673,7 @@ void **CP_consolidateDataToRankZero(SstStream Stream, void *LocalInfo, FFSTypeHa
         }
 
         RecvBuffer = malloc(TotalLen * sizeof(char));
+        Stream->TimingGatherBytes = TotalLen;
     }
 
     /*
@@ -680,6 +683,8 @@ void **CP_consolidateDataToRankZero(SstStream Stream, void *LocalInfo, FFSTypeHa
 
     SMPI_Gatherv(Buffer, (int)DataSize, SMPI_CHAR, RecvBuffer, RecvCounts, Displs, SMPI_CHAR, 0,
                  Stream->mpiComm);
+    Stream->TimingGatherSizes = TimingSizesDone - TimingStart;
+    Stream->TimingGatherBlocks = CP_wallTime() - TimingSizesDone;
     free_FFSBuffer(Buf);
 
     if (Stream->Rank == 0)
@@ -717,6 +722,7 @@ void *CP_distributeDataFromRankZero(SstStream Stream, void *root_info, FFSTypeHa
         size_t encodeSize;
         char *tmp = FFSencode(Buf, FMFormat_of_original(Type), root_info, &encodeSize);
         DataSize = (int)encodeSize;
+        Stream->TimingDistributeBytes = encodeSize;
         SMPI_Bcast(&DataSize, 1, SMPI_INT, 0, Stream->mpiComm);
         SMPI_Bcast(tmp, DataSize, SMPI_CHAR, 0, Stream->mpiComm);
         Buffer = malloc(DataSize);
@@ -1341,12 +1347,20 @@ extern CP_Info CP_getCPInfo(char *ControlModule)
     return StreamCP;
 }
 
+double CP_wallTime(void)
+{
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return (double)tv.tv_sec + (double)tv.tv_usec / 1e6;
+}
+
 SstStream CP_newStream()
 {
     SstStream Stream = malloc(sizeof(*Stream));
     char *CPEnvValue = NULL;
     char *DPEnvValue = NULL;
     memset(Stream, 0, sizeof(*Stream));
+    Stream->Timing = (getenv("SST_TIMING") != NULL);
     pthread_mutex_init(&Stream->DataLock, NULL);
     pthread_cond_init(&Stream->DataCondition, NULL);
     Stream->WriterTimestep = -1; // Filled in by ProvideTimestep

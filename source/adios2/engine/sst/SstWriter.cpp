@@ -5,6 +5,9 @@
  */
 
 #include "adios2/helper/adiosComm.h"
+#include <chrono>
+#include <cstdio>
+#include <cstdlib>
 #include <memory>
 
 #include "SstParamParser.h"
@@ -81,6 +84,12 @@ void SstWriter::EndStep()
                                         "EndStep() is called without a successful BeginStep()");
     }
     m_BetweenStepPairs = false;
+    static const bool Timing = (getenv("SST_TIMING") != nullptr);
+    auto lf_Now = []() {
+        return std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch())
+            .count();
+    };
+    const double TStart = lf_Now();
     if (m_WriterDefinitionsLocked && !m_DefinitionsNotified)
     {
         SstWriterDefinitionLock(m_Output, m_WriterStep);
@@ -88,6 +97,7 @@ void SstWriter::EndStep()
     }
     format::BP5Serializer::TimestepInfo *TSInfo =
         new format::BP5Serializer::TimestepInfo(m_BP5Serializer.CloseTimestep(m_WriterStep));
+    const double TClosed = lf_Now();
     auto lf_FreeBlocks = [](void *vBlock) {
         BP5DataBlock *BlockToFree = reinterpret_cast<BP5DataBlock *>(vBlock);
         //  Free data and metadata blocks here.  BlockToFree is the newblock
@@ -136,9 +146,20 @@ void SstWriter::EndStep()
         newblock->attribute_data.DataSize = 0;
         newblock->attribute_data.block = NULL;
     }
+    // newblock may be freed inside SstProvideTimestepMM
+    const size_t NewFormats = TSInfo->NewMetaMetaBlocks.size();
+    const size_t AttrBytes = newblock->attribute_data.DataSize;
     SstProvideTimestepMM(m_Output, &newblock->metadata, &newblock->data, m_WriterStep,
                          lf_FreeBlocks, newblock, &newblock->attribute_data, NULL, newblock,
                          MetaMetaBlocks);
+    if (Timing && (m_Comm.Rank() == 0))
+    {
+        fprintf(stderr,
+                "SST_TIMING writer_engine step %ld start %.6f close %.6f new_formats %zu "
+                "attr_bytes %zu provide %.6f total %.6f\n",
+                m_WriterStep, TStart, TClosed - TStart, NewFormats, AttrBytes, lf_Now() - TClosed,
+                lf_Now() - TStart);
+    }
 }
 
 void SstWriter::PerformPuts() {}

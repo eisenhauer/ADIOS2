@@ -119,6 +119,7 @@ typedef struct _WS_ReaderInfo
 typedef struct _TimestepMetadataList
 {
     struct _TimestepMetadataMsg *MetadataMsg;
+    double ArrivalTime; /* SST_TIMING */
     struct _TimestepMetadataList *Next;
 } *TSMetadataList;
 
@@ -156,6 +157,13 @@ struct _SstStream
 
     SMPI_Comm mpiComm;
     enum StreamRole Role;
+
+    /* SST_TIMING: per-step phase times, printed by rank 0 */
+    int Timing;
+    double TimingGatherSizes;
+    double TimingGatherBlocks;
+    size_t TimingGatherBytes;
+    size_t TimingDistributeBytes;
 
     /* params */
     int RendezvousReaderCount;
@@ -503,6 +511,7 @@ extern void FinalizeCPInfo(CP_Info Info, CP_DP_Interface DPInfo);
 extern CP_Info CP_getCPInfo(char *ControlModule);
 extern char *CP_GetContactString(SstStream s, attr_list DPAttrs);
 extern SstStream CP_newStream();
+extern double CP_wallTime(void);
 extern void SstInternalProvideTimestep(SstStream s, SstData LocalMetadata, SstData Data,
                                        ssize_t Timestep, FFSFormatList Formats,
                                        DataFreeFunc FreeTimestep, void *FreeClientData,

@@ -7,6 +7,9 @@
 #include "SstReader.h"
 #include "SstParamParser.h"
 
+#include <chrono>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 
@@ -100,7 +103,14 @@ StepStatus SstReader::BeginStep(StepMode Mode, const float timeout_sec)
     }
     // used to inquire for variables in streaming mode
     m_IO.m_ReadStreaming = true;
+    static const bool Timing = (getenv("SST_TIMING") != nullptr);
+    auto lf_Now = []() {
+        return std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch())
+            .count();
+    };
+    const double TStart = lf_Now();
     result = SstAdvanceStep(m_Input, timeout_sec);
+    const double TAdvanced = lf_Now();
     if (result == SstEndOfStream)
     {
         return StepStatus::EndOfStream;
@@ -160,6 +170,24 @@ StepStatus SstReader::BeginStep(StepMode Mode, const float timeout_sec)
     }
 
     m_IO.ResetVariablesStepSelection(true, "in call to SST Reader BeginStep");
+
+    if (Timing)
+    {
+        // advance, install
+        double Local[2] = {TAdvanced - TStart, lf_Now() - TAdvanced};
+        double Max[2], Sum[2];
+        m_Comm.Reduce(Local, Max, 2, helper::Comm::Op::Max, 0);
+        m_Comm.Reduce(Local, Sum, 2, helper::Comm::Op::Sum, 0);
+        if (m_Comm.Rank() == 0)
+        {
+            const int n = m_Comm.Size();
+            fprintf(stderr,
+                    "SST_TIMING readers step %zu nreaders %d writers %d returned %.6f advance_max "
+                    "%.6f advance_mean %.6f install_max %.6f install_mean %.6f\n",
+                    SstCurrentStep(m_Input), n, m_CurrentStepMetaData->WriterCohortSize, TAdvanced,
+                    Max[0], Sum[0] / n, Max[1], Sum[1] / n);
+        }
+    }
 
     return StepStatus::OK;
 }

@@ -1893,6 +1893,7 @@ extern void SstInternalProvideTimestep(SstStream Stream, SstData LocalMetadata, 
     CPTimestepList Entry = calloc(1, sizeof(struct _CPTimestepEntry));
     int PendingReaderCount = 0;
 
+    double TStart = CP_wallTime(), TDP, TQueue = 0, TFill = 0, TBcast, TSend;
     memset(Msg, 0, sizeof(*Msg));
     STREAM_MUTEX_LOCK(Stream);
     Stream->WriterTimestep = Timestep;
@@ -1900,6 +1901,7 @@ extern void SstInternalProvideTimestep(SstStream Stream, SstData LocalMetadata, 
     STREAM_MUTEX_UNLOCK(Stream);
     Stream->DP_Interface->provideTimestep(&Svcs, Stream->DP_Stream, Data, LocalMetadata, Timestep,
                                           &DP_TimestepInfo);
+    TDP = CP_wallTime() - TStart;
     if (Formats)
     {
         FFSFormatList tmp = Formats;
@@ -1963,6 +1965,7 @@ extern void SstInternalProvideTimestep(SstStream Stream, SstData LocalMetadata, 
         RegisterQueue ArrivingReader;
         STREAM_MUTEX_LOCK(Stream);
         ArrivingReader = Stream->ReaderRegisterQueue;
+        double TQ0 = CP_wallTime();
         QueueMaintenance(Stream);
         if (Stream->QueueFullPolicy == SstQueueFullDiscard)
         {
@@ -1984,6 +1987,7 @@ extern void SstInternalProvideTimestep(SstStream Stream, SstData LocalMetadata, 
                 STREAM_CONDITION_WAIT(Stream);
             }
         }
+        TQueue = CP_wallTime() - TQ0;
         memset(&TimestepMetaData, 0, sizeof(TimestepMetaData));
         TimestepMetaData.PendingReaderCount = 0;
         while (ArrivingReader)
@@ -2010,11 +2014,15 @@ extern void SstInternalProvideTimestep(SstStream Stream, SstData LocalMetadata, 
         /* Only rank 0 sends metadata to readers, so only it assembles the
          * message; its blocks point into the gather buffer, data_block1 */
         memset(Msg, 0, sizeof(*Msg));
+        double TF0 = CP_wallTime();
         FillMetadataMsg(Stream, Msg, pointers);
+        TFill = CP_wallTime() - TF0;
         Entry->AttributeLogEnd = Stream->AttributeLogCount;
         STREAM_MUTEX_UNLOCK(Stream);
+        double TB0 = CP_wallTime();
         ReturnData = CP_distributeDataFromRankZero(
             Stream, &TimestepMetaData, Stream->CPInfo->ReturnMetadataInfoFormat, &data_block2);
+        TBcast = CP_wallTime() - TB0;
         free(TimestepMetaData.ReaderStatus);
         if (TimestepMetaData.ReleaseList)
             free(TimestepMetaData.ReleaseList);
@@ -2024,8 +2032,10 @@ extern void SstInternalProvideTimestep(SstStream Stream, SstData LocalMetadata, 
     else
     {
         /* other ranks */
+        double TB0 = CP_wallTime();
         ReturnData = CP_distributeDataFromRankZero(
             Stream, NULL, Stream->CPInfo->ReturnMetadataInfoFormat, &data_block2);
+        TBcast = CP_wallTime() - TB0;
         memset(Msg, 0, sizeof(*Msg));
     }
     PendingReaderCount = ReturnData->PendingReaderCount;
@@ -2051,6 +2061,7 @@ extern void SstInternalProvideTimestep(SstStream Stream, SstData LocalMetadata, 
     }
     ActOnTSLockStatus(Stream, Timestep);
     PERFSTUBS_TIMER_START(timerTS, "provide timestep operations");
+    double TS0 = CP_wallTime();
     if (ReturnData->DiscardThisTimestep)
     {
         /* Data was actually discarded, but we want to send a message to each
@@ -2090,6 +2101,17 @@ extern void SstInternalProvideTimestep(SstStream Stream, SstData LocalMetadata, 
         SubRefTimestep(Stream, Entry->Timestep, 0);
         QueueMaintenance(Stream);
         STREAM_MUTEX_UNLOCK(Stream);
+    }
+    TSend = CP_wallTime() - TS0;
+    if (Stream->Timing && (Stream->Rank == 0))
+    {
+        fprintf(stderr,
+                "SST_TIMING writer step %zd start %.6f dp %.6f gather_sizes %.6f gather_blocks "
+                "%.6f gather_bytes %zu queue_wait %.6f fill %.6f bcast %.6f bcast_bytes %zu "
+                "send %.6f total %.6f discard %d\n",
+                Timestep, TStart, TDP, Stream->TimingGatherSizes, Stream->TimingGatherBlocks,
+                Stream->TimingGatherBytes, TQueue, TFill, TBcast, Stream->TimingDistributeBytes,
+                TSend, CP_wallTime() - TStart, ReturnData->DiscardThisTimestep);
     }
     free(data_block2);
     while (PendingReaderCount--)
