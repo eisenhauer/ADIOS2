@@ -483,6 +483,17 @@ field_is_flat(FMFormat f, FMTypeDesc *t)
     return FALSE;
 }
 
+/* true if the type a pointer refers to can be part of a cycle */
+static int
+target_is_recursive(FMFormat f, FMTypeDesc *t)
+{
+    while ((t->type == FMType_pointer) || (t->type == FMType_array))
+	t = t->next;
+    if (t->type == FMType_subformat)
+	return f->field_subformats[t->field_index]->recursive;
+    return 0;
+}
+
 static int
 handle_subfields(FFSBuffer buf, FMFormat f, estate s, size_t data_offset)
 {
@@ -564,6 +575,7 @@ handle_subfield(FFSBuffer buf, FMFormat f, estate s, size_t data_offset, size_t 
 	size_t size, new_offset, tmp_data_loc;
 	char *ptr_value;
 	field_marshal_info marshal_info;
+	int track_addr = target_is_recursive(f, t->next);
 
 	memset(&src_spec, 0, sizeof(src_spec));
 	src_spec.size = f->pointer_size;
@@ -582,7 +594,7 @@ handle_subfield(FFSBuffer buf, FMFormat f, estate s, size_t data_offset, size_t 
 	    }
 	}
 
-	if (f->recursive) {
+	if (track_addr) {
 	    ssize_t previous_offset = search_addr_list(s, ptr_value);
 	    if (previous_offset != (ssize_t)-1) {
 		quick_put_ulong(&src_spec, previous_offset,
@@ -643,7 +655,7 @@ handle_subfield(FFSBuffer buf, FMFormat f, estate s, size_t data_offset, size_t 
 	}
 	quick_put_ulong(&src_spec, new_offset - s->saved_offset_difference, 
 			(char*)buf->tmp_buffer + data_offset);
-	if (f->recursive) {
+	if (track_addr) {
 	    add_to_addr_list(s, ptr_value, new_offset - s->saved_offset_difference);
 	}
 	if (field_is_flat(f, t->next)) return 1;
