@@ -719,15 +719,22 @@ void *CP_distributeDataFromRankZero(SstStream Stream, void *root_info, FFSTypeHa
     if (Stream->Rank == 0)
     {
         FFSBuffer Buf = create_FFSBuffer();
-        size_t encodeSize;
-        char *tmp = FFSencode(Buf, FMFormat_of_original(Type), root_info, &encodeSize);
+        FFSEncodeVector Vec = FFSencode_vector(Buf, FMFormat_of_original(Type), root_info);
+        size_t encodeSize = 0;
+        for (int i = 0; Vec[i].iov_base; i++)
+            encodeSize += Vec[i].iov_len;
+        Buffer = malloc(encodeSize);
+        char *Dest = Buffer;
+        for (int i = 0; Vec[i].iov_base; i++)
+        {
+            memcpy(Dest, Vec[i].iov_base, Vec[i].iov_len);
+            Dest += Vec[i].iov_len;
+        }
+        free_FFSBuffer(Buf);
         DataSize = (int)encodeSize;
         Stream->TimingDistributeBytes = encodeSize;
         SMPI_Bcast(&DataSize, 1, SMPI_INT, 0, Stream->mpiComm);
-        SMPI_Bcast(tmp, DataSize, SMPI_CHAR, 0, Stream->mpiComm);
-        Buffer = malloc(DataSize);
-        memcpy(Buffer, tmp, DataSize);
-        free_FFSBuffer(Buf);
+        SMPI_Bcast(Buffer, DataSize, SMPI_CHAR, 0, Stream->mpiComm);
     }
     else
     {
